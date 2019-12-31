@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
 """
-python sruns_monitor/scripts/launch_samplesheet_subscriber.py  -p cloudfunctions-238722 -s sssub -c ~/smon_conf.json 
+Polls a GCP Pub/Sub topic for new SampleSheet notification messages in order to initiate bcl2fastq.
+
+python sruns_monitor/scripts/launch_samplesheet_subscriber.py -p cloudfunctions-238722 -s sssub -c ~/smon_conf.json 
 """
 
 import argparse
