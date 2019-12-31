@@ -7,19 +7,17 @@ import sys
 import time
 
 import sruns_monitor as srm
-import samplesheetsubscriber as sss
+import samplesheetsubscriber as ss
+from sruns_monitor import exceptions as srm_exceptions 
 from sruns_monitor import logging_utils
 from sruns_monitor  import gcstorage_utils
-from sruns_monitor import utils
+from sruns_monitor import utils as srm_utils
 
 from google.cloud import firestore
 from google.cloud import pubsub_v1
 import google.api_core.exceptions
 
 """
-howdy
-
-pip install google-cloud-pubsub
 GCP documentation for creating a notification configuration at https://cloud.google.com/storage/docs/pubsub-notifications.
 GCP documentation for synchronous pull at https://cloud.google.com/pubsub/docs/pull#synchronous_pull.
 """
@@ -30,12 +28,14 @@ class Poll:
     def __init__(self, subscription_name, conf_file, gcp_project_id=""):
         """
         Args:
-            gcp_project_id: `str`. The ID of the GCP project. If left blank, it will be extracted from
+            subscription_name: `str`. The name of the Pub
+            gcp_project_id: `str`. The ID of the GCP project in which the subscription identified by
+                the 'subscription_name` parameter was created. If left blank, it will be extracted from
                 the standard environment variable GCP_PROJECT.
         """
-        self.subscription_name = subscription_name
         self.logger = self._set_logger()
-        self.conf = utils.validate_conf(conf_file, schema_file=sss.CONF_SCHEMA)
+        self.subscription_name = subscription_name
+        self.conf = srm_utils.validate_conf(conf_file, schema_file=ss.CONF_SCHEMA)
         self.gcp_project_id = gcp_project_id
         if not self.gcp_project_id:
             try:
@@ -44,7 +44,9 @@ class Poll:
                 msg = "You must set the GCP_PROJECT environment variable when the 'gcp_project_id' argument is not set."
                 self.logger.critical(msg)
                 sys.exit(-1)
-        self.basedir = self.conf.get(sss.C_ANALYSIS_DIR, "demultiplexing")
+        #: Path to the base directory for running analyses.  Defaults to 'demultiplexing' in the
+        #: calling directory. Will be created if the provided path does not yet exist. 
+        self.basedir = self.conf.get(ss.C_ANALYSIS_DIR, "demultiplexing")
         if not os.path.exists(self.basedir):
             self.logger.info("Creating directory " + os.path.join(os.getcwd(), self.basedir))
             os.makedirs(self.basedir)
@@ -73,6 +75,8 @@ class Poll:
 
     def get_firestore_document(self, run_name):
         """
+        Retrieves a document in the Firestore collection that has the given entry name. 
+
         Args:
             run_name: `str`. The name of the sequencing run at hand. Used to query Firestore for a
                 document having the 'name' attribute set to this.
@@ -85,11 +89,16 @@ class Poll:
 
     def get_msg_data(self, rcv_msg):
         """
+        Loads a google.cloud.pubsub_v1.types.ReceivedMessage as JSON.  
+
         Args:
             rcv_msg: `google.cloud.pubsub_v1.types.ReceivedMessage`.
 
+        Returns:
+            `dict`. 
+
         Example:
-            At the heart of the received messages is the data that can be loaded as JSON, which will give
+            At the heart of a received message is the data that can be loaded as JSON, which will give
             us something like this:
 
             > jdata = json.loads(rcv_msg.message.data)
@@ -117,14 +126,13 @@ class Poll:
         """
         #: msg is a `google.cloud.pubsub_v1.types.PubsubMessage`
         msg = rcv_msg.message
-        #: msg.data is a `bytes` object.
-        jdata = json.loads(msg.data)
+        jdata = json.loads(msg.data) # msg.data is a bytes object.
         return jdata
 
     def pull(self):
         """
         Returns:
-            `list` of 0 or more `google.cloud.pubsub_v1.types.ReceivedMessage` instances.
+            `list` of 0 or 1 `google.cloud.pubsub_v1.types.ReceivedMessage` instance. 
         """
         try:
             #: response is a PullResponse instance; see
@@ -139,6 +147,12 @@ class Poll:
         """
         Args:
             received_message: A `google.cloud.pubsub_v1.types.ReceivedMessage` instance.
+
+        Raises:
+            `sruns_monitor.exceptions.FirestoreDocumentMissing`: A corresponding Firestore document
+                could not be found for the provided message. 
+            `sruns_monitor.exceptions.FirestoreDocumentMissingStoragePath`: The provided message's 
+                corresponding Firestore document is missing the storage location while it is expected.
         """
         # Get JSON form of data
         jdata = self.get_msg_data(received_message)
@@ -150,24 +164,24 @@ class Poll:
         doc = docref.get().to_dict() # dict
         if not doc:
             msg = f"No Firestore document exists for run '{run_name}'."
-            raise Exception(msg)
-        # Get path to raw run data in Google Storage. Has bucket name as prefix, i.e.
+            raise srm_exceptions.FirestoreDocumentMissing(msg)
+        # Get path to raw run data (tarball) in Google Storage. Has bucket name as prefix, i.e.
         # mybucket/path/to/obj
-        raw_run_path = doc.get(srm.FIRESTORE_ATTR_STORAGE)
-        if not raw_run_path:
+        gs_rundir_path = doc.get(srm.FIRESTORE_ATTR_STORAGE)
+        if not gs_rundir_path:
             msg = f"Firestore document '{run_name}' doesn't have the storage path attribute '{srm.FIRESTORE_ATTR_STORAGE}' set!"
             msg += f" Did the sequencing run finish uploading to Google Storeage yet?"
-            raise Exception(msg)
-        run_bucket_name, raw_run_path = raw_run_path.split("/", 1)
+            raise srm_exceptions.FirestoreDocumentMissingStoragePath(msg)
+        run_bucket_name, gs_rundir_path = gs_rundir_path.split("/", 1)
         run_bucket = gcstorage_utils.get_bucket(run_bucket_name)
-        # Check if we have a previous sample sheet message that we stored in the Forestore
+        # Check if we have a previous sample sheet message that we stored in the Firestore
         # document.
         samplesheet_pubsub_data = doc.get(srm.FIRESTORE_ATTR_SS_PUBSUB_DATA)
         if not samplesheet_pubsub_data:
             docref.update({srm.FIRESTORE_ATTR_SS_PUBSUB_DATA: jdata})
         else:
             # Check if generation number is the same.
-            # If same, then we got a duplicate message from pubsub and can ignore. But if
+            # If same, then we got a duplicate message from pubsub and can ignore it. But if
             # different, then the SampleSheet was re-uploaded and we should process it again
             # (i.e. maybe the original SampleSheet had an incorrect barcode assignment).
             prev_gen = samplesheet_pubsub_data["generation"]
@@ -187,23 +201,26 @@ class Poll:
                 self.subscriber.acknowledge(self.subscription_path, ack_ids=[received_message.ack_id])
         # Download raw run data
         download_dir = os.path.join(self.basedir, run_name, jdata["generation"])
-        storage_path = gcstorage_utils.download(bucket=run_bucket, object_path=raw_run_path, download_dir=download_dir)
+        raw_rundir_path = gcstorage_utils.download(bucket=run_bucket, object_path=gs_rundir_path, download_dir=download_dir)
         ss_bucket = gcstorage_utils.get_bucket(jdata["bucket"])
         samplesheet_path = gcstorage_utils.download(bucket=ss_bucket, object_path=jdata["name"], download_dir=download_dir)
         # Extract tarball
-        utils.extract(storage_path, where=download_dir)
+        srm_utils.extract(raw_rundir_path, where=download_dir)
         # Launch bcl2fastq
         self.run_bcl2fastq(rundir=os.path.join(download_dir, run_name, samplesheet=samplesheet_path)
 
-    def run_bcl2fastq(self, rundir=storage_path, samplesheet=samplesheet_path):
+    def run_bcl2fastq(self, rundir, samplesheet):
         """
+        Demultiplexes the provided run directory using bcl2fastq and outputs the results in a
+        folder named 'demux' that will resided within the run directory.
+
         Args:
             rundir: `str`. Directory path to the sequencing run.
             samplesheet_path: `str`. Directory path to the SampleSheet. 
         """
         self.logger.info("Starting bcl2fastq for run {rundir} and SampleSheet {samplesheet}.")
         outdir = os.path.join(rundir, "demux")
-        cmd = f"docker run -v {rundir}:{rundir} nathankw/bcl2fastq2:latest bcl2fastq" 
+        cmd = "bcl2fastq" 
         cmd += f" --sample-sheet {samplesheet} -R {rundir} --ignore-missing-bcls --ignore-missing-filter"
         cmd += f" --ignore-missing-positions --output-dir {outdir}"
         self.logger.info(cmd)
@@ -216,7 +233,7 @@ class Poll:
                 received_message = self.pull()
                 if received_message:
                     self.process_message(received_message)
-                deleted_dirs = utils.clean_completed_runs(basedir=self.basedir, limit=self.sweep_age_sec)
+                deleted_dirs = srm_utils.clean_completed_runs(basedir=self.basedir, limit=self.sweep_age_sec)
                 if deleted_dirs:
                     for d_path in deleted_dirs:
                         self.logger.info("Deleted directory {}".format(d_path))
