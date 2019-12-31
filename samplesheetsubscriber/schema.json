@@ -1,0 +1,51 @@
+{
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "type": "object",
+    "properties": {
+        "mail": {
+            "description": "Configuraiton for how to send emails",
+            "type": "object",
+            "properties": {
+                "from": {
+                    "description": "The from email address",
+                    "type": "string"
+                },
+                "host": {
+                    "description": "The mail server's IP or hostname",
+                    "type": "string"
+                },
+                "tos": {
+                    "description": "List of recipient email addresses.",
+                    "type": "array",
+                    "uniqueItems": true,
+                    "items": {"type": "string"}
+                }
+            },
+            "additionalProperties": false,
+            "required": ["from", "host", "tos"]
+        },
+        "analysis_dir": {
+            "description": "The base directory in which all runs will be downloaded and run with bcl2fastq. Note: see 'sweep_age_sec' schema property as well.",
+            "type": "string"
+        },
+        "name": {
+            "description": "Custom name for the SampleSheetSubcriber tool. The name will appear in the subject line if email notification is configured, as well as in other places, i.e. log messages. Useful if you have multiple deployments.",
+            "type": "string"
+        },
+        "cycle_pause_sec": {
+            "description": "The number of seconds between consecutive polls to Pub Sub.",
+            "type": "integer" 
+        },
+        "firestore_collection": {
+            "description": "The name of a GCP Firestore collection for storing persistent workflow state",
+            "type": "string"
+        },
+        "sweep_age_sec": {
+            "description": "For run directories in the path specified by analysis_dir, directories older than this number of seconds will be deleted",
+            "type": "integer"
+        }
+    },
+    "additionalProperties": false,
+    "required": ["name", "analysis_dir"]
+}
+
