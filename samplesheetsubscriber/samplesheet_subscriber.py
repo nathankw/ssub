@@ -212,11 +212,18 @@ class Poll:
     def run_bcl2fastq(self, rundir, samplesheet):
         """
         Demultiplexes the provided run directory using bcl2fastq and outputs the results in a
-        folder named 'demux' that will resided within the run directory.
+        folder named 'demux' that will reside within the run directory.
 
         Args:
             rundir: `str`. Directory path to the sequencing run.
             samplesheet_path: `str`. Directory path to the SampleSheet. 
+  
+        Returns:
+            `str`. The path to the directory that contains the demultiplexing results.
+
+        Raises:
+            `subprocess.SubprocessError`: There was a problem running bcl2fastq. The STDOUT and
+                STDERR will be logged. 
         """
         self.logger.info("Starting bcl2fastq for run {rundir} and SampleSheet {samplesheet}.")
         outdir = os.path.join(rundir, "demux")
@@ -224,7 +231,14 @@ class Poll:
         cmd += f" --sample-sheet {samplesheet} -R {rundir} --ignore-missing-bcls --ignore-missing-filter"
         cmd += f" --ignore-missing-positions --output-dir {outdir}"
         self.logger.info(cmd)
-        popen = subprocess.Popen(cmd, shell=True)
+        try:
+            stdout, stderr = srm_utils.create_subprocess(cmd)
+        except subprocess.SubprocessError as e:
+            self.logger.critical(str(e))
+            raise
+        self.logger.info(f"Finished running bcl2fastq. STDOUT was '{stdout}', STDERR was '{stderr}'.")
+        return outdir
+       
 
     def start(self):
         interval = self.conf.get(srm.C_CYCLE_PAUSE_SEC, 60)
