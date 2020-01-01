@@ -207,7 +207,8 @@ class Poll:
         # Extract tarball
         srm_utils.extract(raw_rundir_path, where=download_dir)
         # Launch bcl2fastq
-        self.run_bcl2fastq(rundir=os.path.join(download_dir, run_name, samplesheet=samplesheet_path)
+        demux_dir = self.run_bcl2fastq(rundir=os.path.join(download_dir, run_name, samplesheet=samplesheet_path)
+        self.upload_demux(bucket_name=run_bucket_name, path=demux_dir, run_name=run_name)
 
     def run_bcl2fastq(self, rundir, samplesheet):
         """
@@ -238,7 +239,19 @@ class Poll:
             raise
         self.logger.info(f"Finished running bcl2fastq. STDOUT was '{stdout}', STDERR was '{stderr}'.")
         return outdir
-       
+
+    def upload_demux(self, bucket_name,  path, run_name):
+        """
+        Uploads a demultiplexing results folder to Google Storage. 
+
+        Args:
+            bucket_name: `str`. The name of the bucket.
+            path: `str`. The path to the folder that contains the demultiplexing results.
+            run_name: `str`. Name of the sequencing run (rundir). 
+        """
+        object_path = f"{run_name}/"
+        self.logger.info(f"Uploading demultiplexing results for run {run_name}")
+        gcstorage_utils.upload_folder(bucket_name, path, object_path)
 
     def start(self):
         interval = self.conf.get(srm.C_CYCLE_PAUSE_SEC, 60)
