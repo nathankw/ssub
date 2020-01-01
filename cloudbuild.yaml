@@ -1,5 +1,5 @@
 steps:
 - name: 'gcr.io/cloud-builders/docker'
-  args: [ 'build', '-t', 'gcr.io/$PROJECT_ID/sruns-monitor', '.' ]
+  args: [ 'build', '-t', 'gcr.io/$PROJECT_ID/samplesheetsubscriber', '.' ]
 images:
-- 'gcr.io/$PROJECT_ID/sruns-monitor'
+- 'gcr.io/$PROJECT_ID/samplesheetsubscriber'
