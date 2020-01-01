@@ -1,0 +1,11 @@
+[Unit]
+Description=sruns monitor daemon
+Documentation=https://pypi.org/project/samplesheetsubscriber
+
+[Service]
+Type=simple
+ExecStartPre=/usr/bin/gcloud auth configure-docker
+ExecStart=/usr/bin/docker run --rm -w /mnt/disks/smon -v /mnt/disks/smon:/mnt/disks/smon -v /mnt/sequencing/hdd/NovaSeq_A00731:/mnt/sequencing/hdd/NovaSeq_A00731 -v /mnt/sequencing/hdd/NovaSeq_A00737:/mnt/sequencing/hdd/NovaSeq_A00737  gcr.io/cgsdevelopment-1216/sruns-monitor@sha256:2a81136be97c7883e598af1a4a1e24dd5a058f7fa11df806bd0b1b309676dcbe  -c /mnt/disks/smon/sruns_mon.conf
+[Install]
+WantedBy=multi-user.target
+
