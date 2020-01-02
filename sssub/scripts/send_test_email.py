@@ -6,7 +6,7 @@ Send a test email using the mail configuration in the user-provided configuratio
 
 import argparse
 
-from samplesheetsubscriber.subscriber import Poll
+from sssub.subscriber import Poll
 
 
 def get_parser():

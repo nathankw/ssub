@@ -8,11 +8,12 @@ import sys
 import time
 
 import sruns_monitor as srm
-import samplesheetsubscriber as ss
 from sruns_monitor import exceptions as srm_exceptions
 from sruns_monitor import logging_utils
 from sruns_monitor  import gcstorage_utils
 from sruns_monitor import utils as srm_utils
+
+import sssub
 
 from google.cloud import firestore
 from google.cloud import pubsub_v1
@@ -41,7 +42,7 @@ class Poll:
         #: is configured, as well as in other places, i.e. log messages.
         self.client_name = self.conf[srm.C_MONITOR_NAME]
         self.subscription_name = subscription_name
-        self.conf = srm_utils.validate_conf(conf_file, schema_file=ss.CONF_SCHEMA)
+        self.conf = srm_utils.validate_conf(conf_file, schema_file=sssub.CONF_SCHEMA)
         self.gcp_project_id = gcp_project_id
         if not self.gcp_project_id:
             try:

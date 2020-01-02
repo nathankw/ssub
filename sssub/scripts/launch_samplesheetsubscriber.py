@@ -3,12 +3,12 @@
 """
 Polls a GCP Pub/Sub topic for new SampleSheet notification messages in order to initiate bcl2fastq.
 
-python sruns_monitor/scripts/launch_samplesheet_subscriber.py -p cloudfunctions-238722 -s sssub -c ~/smon_conf.json 
+python sruns_monitor/scripts/launch_sssub.py -p cloudfunctions-238722 -s sssub -c ~/smon_conf.json 
 """
 
 import argparse
 
-from samplesheetsubscriber.subscriber import Poll
+from sssub.subscriber import Poll
 
 
 def get_parser():
