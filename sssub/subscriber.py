@@ -65,7 +65,7 @@ class Poll:
         self.subscriber = pubsub_v1.SubscriberClient()
         self.subscription_path = self.subscriber.subscription_path(self.gcp_project_id, self.subscription_name)
         self.logger.info(f"Subscription path: {self.subscription_path}")
-        self.firestore_collection_name = self.conf.get(srm.C_FIRESTORE_COLLECTION)
+        self.firestore_collection_name = self.conf[srm.C_FIRESTORE_COLLECTION]
         self.firestore_coll = firestore.Client().collection(self.firestore_collection_name)
 
     def _set_logger(self):
