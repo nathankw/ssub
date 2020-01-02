@@ -38,11 +38,11 @@ class Poll:
                 the standard environment variable GCP_PROJECT.
         """
         self.logger = self._set_logger()
+        self.subscription_name = subscription_name
+        self.conf = srm_utils.validate_conf(conf_file, schema_file=sssub.CONF_SCHEMA)
         #: The name of the subscriber client. The name will appear in the subject line if email notification
         #: is configured, as well as in other places, i.e. log messages.
         self.client_name = self.conf[srm.C_MONITOR_NAME]
-        self.subscription_name = subscription_name
-        self.conf = srm_utils.validate_conf(conf_file, schema_file=sssub.CONF_SCHEMA)
         self.gcp_project_id = gcp_project_id
         if not self.gcp_project_id:
             try:
