@@ -9,5 +9,5 @@
     "analysis_dir": "/Users/s0302521/Downloads/sssub/demux",
     "name": "sssub",
     "firestore_collection": "sruns",
-    "cycle_pause_sec": 60,
+    "cycle_pause_sec": 60
 }
