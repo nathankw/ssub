@@ -45,10 +45,10 @@ setup(
   ],
   long_description = long_description,
   long_description_content_type = "text/x-rst",
-  name = "samplesheetmonitor",
+  name = "sssub",
   packages = find_packages(),
   package_data = {
-      "samplesheetmonitor": ["schema.json"],
+      "samplesheetsubscriber": ["schema.json"],
   },
   project_urls = {
       "Read the Docs": "https://samplesheetmonitor.readthedocs.io/en/latest"

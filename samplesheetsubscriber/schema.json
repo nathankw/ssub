@@ -24,10 +24,6 @@
             "additionalProperties": false,
             "required": ["from", "host", "tos"]
         },
-        "analysis_dir": {
-            "description": "The base directory in which all runs will be downloaded and run with bcl2fastq. Note: see 'sweep_age_sec' schema property as well.",
-            "type": "string"
-        },
         "name": {
             "description": "Custom name for the SampleSheetSubcriber tool. The name will appear in the subject line if email notification is configured, as well as in other places, i.e. log messages. Useful if you have multiple deployments.",
             "type": "string"
@@ -37,7 +33,7 @@
             "type": "integer" 
         },
         "firestore_collection": {
-            "description": "The name of a GCP Firestore collection for storing persistent workflow state",
+            "description": "The name of a GCP Firestore collection used by sruns-monitor.",
             "type": "string"
         },
         "sweep_age_sec": {
@@ -46,6 +42,6 @@
         }
     },
     "additionalProperties": false,
-    "required": ["name", "analysis_dir"]
+    "required": ["firestore_collection", "name"]
 }
 

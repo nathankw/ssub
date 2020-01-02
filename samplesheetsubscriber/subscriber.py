@@ -2,13 +2,14 @@ import argparse
 import json
 import logging
 import os
+from pprint import pformat
 import subprocess
 import sys
 import time
 
 import sruns_monitor as srm
 import samplesheetsubscriber as ss
-from sruns_monitor import exceptions as srm_exceptions 
+from sruns_monitor import exceptions as srm_exceptions
 from sruns_monitor import logging_utils
 from sruns_monitor  import gcstorage_utils
 from sruns_monitor import utils as srm_utils
@@ -27,6 +28,8 @@ class Poll:
 
     def __init__(self, subscription_name, conf_file, gcp_project_id=""):
         """
+        Creates a sub directory named sssub_demultiplexing within the calling directory.
+
         Args:
             subscription_name: `str`. The name of the Pub
             gcp_project_id: `str`. The ID of the GCP project in which the subscription identified by
@@ -34,6 +37,9 @@ class Poll:
                 the standard environment variable GCP_PROJECT.
         """
         self.logger = self._set_logger()
+        #: The name of the subscriber client. The name will appear in the subject line if email notification
+        #: is configured, as well as in other places, i.e. log messages.
+        self.client_name = self.conf[srm.C_MONITOR_NAME]
         self.subscription_name = subscription_name
         self.conf = srm_utils.validate_conf(conf_file, schema_file=ss.CONF_SCHEMA)
         self.gcp_project_id = gcp_project_id
@@ -44,9 +50,9 @@ class Poll:
                 msg = "You must set the GCP_PROJECT environment variable when the 'gcp_project_id' argument is not set."
                 self.logger.critical(msg)
                 sys.exit(-1)
-        #: Path to the base directory for running analyses.  Defaults to 'demultiplexing' in the
-        #: calling directory. Will be created if the provided path does not yet exist. 
-        self.basedir = self.conf.get(ss.C_ANALYSIS_DIR, "demultiplexing")
+        #: Path to the base directory in which all further actions take place, i.e. downloads, 
+        #: and running bcl2fastq. Will be created if the path does not yet exist.
+        self.basedir = os.path.join(os.getcwd(), "sssub_demultiplexing")
         if not os.path.exists(self.basedir):
             self.logger.info("Creating directory " + os.path.join(os.getcwd(), self.basedir))
             os.makedirs(self.basedir)
@@ -73,9 +79,38 @@ class Poll:
         logging_utils.add_file_handler(logger=logger, log_dir=srm.LOG_DIR, level=logging.ERROR, tag="error")
         return logger
 
+    def get_mail_params(self):
+        return self.conf.get(srm.C_MAIL)
+
+    def send_mail(self, subject, body):
+        """
+        Sends an email if the mail parameters are provided in the configuration.
+        Prior to sending an email, the subject and body of the email will be logged.
+
+        Args:
+            subject: `str`. The email's subject. Note that the subject will be mangled a bit -
+                it will be prefixed with `self.monitor_Name` plus a colon and a space.
+            body: `str`. The email body w/o any markup.
+
+        Returns: `None`.
+        """
+        subject = self.client_name + ": " + subject
+        mail_params = self.get_mail_params()
+        if not mail_params:
+            return
+        from_addr = mail_params["from"]
+        host = mail_params["host"]
+        tos = mail_params["tos"]
+        self.logger.info("""
+            Sending mail
+            Subject: {}
+            Body: {}
+            """.format(subject, body))
+        srm_utils.send_mail(from_addr=from_addr, to_addrs=tos, subject=subject, body=body, host=host)
+
     def get_firestore_document(self, run_name):
         """
-        Retrieves a document in the Firestore collection that has the given entry name. 
+        Retrieves a document in the Firestore collection that has the given entry name.
 
         Args:
             run_name: `str`. The name of the sequencing run at hand. Used to query Firestore for a
@@ -89,13 +124,13 @@ class Poll:
 
     def get_msg_data(self, rcv_msg):
         """
-        Loads a google.cloud.pubsub_v1.types.ReceivedMessage as JSON.  
+        Loads a google.cloud.pubsub_v1.types.ReceivedMessage as JSON.
 
         Args:
             rcv_msg: `google.cloud.pubsub_v1.types.ReceivedMessage`.
 
         Returns:
-            `dict`. 
+            `dict`.
 
         Example:
             At the heart of a received message is the data that can be loaded as JSON, which will give
@@ -132,7 +167,7 @@ class Poll:
     def pull(self):
         """
         Returns:
-            `list` of 0 or 1 `google.cloud.pubsub_v1.types.ReceivedMessage` instance. 
+            `list` of 0 or 1 `google.cloud.pubsub_v1.types.ReceivedMessage` instance.
         """
         try:
             #: response is a PullResponse instance; see
@@ -150,8 +185,8 @@ class Poll:
 
         Raises:
             `sruns_monitor.exceptions.FirestoreDocumentMissing`: A corresponding Firestore document
-                could not be found for the provided message. 
-            `sruns_monitor.exceptions.FirestoreDocumentMissingStoragePath`: The provided message's 
+                could not be found for the provided message.
+            `sruns_monitor.exceptions.FirestoreDocumentMissingStoragePath`: The provided message's
                 corresponding Firestore document is missing the storage location while it is expected.
         """
         # Get JSON form of data
@@ -217,18 +252,18 @@ class Poll:
 
         Args:
             rundir: `str`. Directory path to the sequencing run.
-            samplesheet_path: `str`. Directory path to the SampleSheet. 
-  
+            samplesheet_path: `str`. Directory path to the SampleSheet.
+
         Returns:
             `str`. The path to the directory that contains the demultiplexing results.
 
         Raises:
             `subprocess.SubprocessError`: There was a problem running bcl2fastq. The STDOUT and
-                STDERR will be logged. 
+                STDERR will be logged.
         """
         self.logger.info("Starting bcl2fastq for run {rundir} and SampleSheet {samplesheet}.")
         outdir = os.path.join(rundir, "demux")
-        cmd = "bcl2fastq" 
+        cmd = "bcl2fastq"
         cmd += f" --sample-sheet {samplesheet} -R {rundir} --ignore-missing-bcls --ignore-missing-filter"
         cmd += f" --ignore-missing-positions --output-dir {outdir}"
         self.logger.info(cmd)
@@ -243,13 +278,13 @@ class Poll:
     def upload_demux(self, bucket_name,  path, run_name):
         """
         Uploads a demultiplexing results folder to Google Storage. For example, if the run name
-        is BOB and the demultiplexing folder is at /path/to/BOB/demux, and the bucket is 
+        is BOB and the demultiplexing folder is at /path/to/BOB/demux, and the bucket is
         named myruns, then the folder will be uploaded to gs://myruns/BOB/demux.
 
         Args:
             bucket_name: `str`. The name of the bucket.
             path: `str`. The path to the folder that contains the demultiplexing results.
-            run_name: `str`. Name of the sequencing run (rundir). 
+            run_name: `str`. Name of the sequencing run (rundir).
         """
         bucket_path = f"{run_name}/"
         self.logger.info(f"Uploading demultiplexing results for run {run_name}")
@@ -267,8 +302,12 @@ class Poll:
                     for d_path in deleted_dirs:
                         self.logger.info("Deleted directory {}".format(d_path))
                 time.sleep(interval)
-        except Exception:
-            self.logger.debug("Oh la la")
+        except Exception as e:
+            tb = e.__traceback__
+            tb_msg = pformat(traceback.extract_tb(tb).format())                                 
+            msg = "Main process Exception: {} {}".format(e, tb_msg)
+            self.logger.error(msg)
+            self.send_mail(subject="Error", body=msg)
             raise
 
 
