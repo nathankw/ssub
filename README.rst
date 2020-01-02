@@ -1,22 +1,43 @@
-Sequencing Runs Monitor
-***********************
+SampleSheets Subscriber - sssub
+*******************************
 
-A tool that archives new Illumina sequencing runs to Google Cloud Storage
+A downstream tool of smon_ that uses Pub/Sub notifications to initiate demultiplexing of an 
+Illumina sequecing Run.
 
 Use case
 ========
-You have one or more Illumina sequencers that are writing to a mounted filesystem such as NFS.
-You need a way to detect when there is a new, completed sequencing run directory and then relocate
-it to redundant storage. Downstream tools need to be able to know when a tarred run directory is
-available to post-processing (i.e. demultiplexing, QC, read alignment, etc.).
+smon_ has done its job to persistantly store the raw sequencing runs in a Google Storage bucket.
+Now you need another tool that can automatially start demultiplexing. However, demultiplexing can't 
+start until you have a SampleSheet.  But once it's there, demultiplexing needs to start and the
+results need to be uploaded to Google Stroage. 
 
 How it works
 ============
-Sequencing Runs Monitor solves the aforementioned challenges through the use of Google Cloud Platform
-services and by tracking workflow state. Sequencing runs are tarred with gzip compression and then
-uploaded to Google Cloud Storage. Workflow state is tracked locally via SQLite and optionally 
-in the NoSQL database Google Firestore for redundancy and to allow downstream clients to query sequencing
-run records. 
+SampleSheets Subscriber (sssub) solves the aforementioned challenges by utilizing the power of GCP
+events and triggers. At a high level, it works as follows:
+
+  * User/application uploads a samplesheet to a dedicated bucket. The sample sheet naming convention 
+    is ${RUN_NAME }.csv.
+  * Google Storage immediately fires off an event to a Pub/Sub topic (whenever there is a new file
+    or when an existing file is overwritten).
+  * sssub is running on a compute instance as a daemon process.  It is subscribed to that Pub/Sub 
+    topic. sssub polls the topic for new messages regularly, i.e. once a minute.
+  * When a new message is received, the script parses information about the event.
+  * sssub will the query the Firestore collection - the same one used by smon_ - for a 
+    document whose name is equal to the samplesheet name (minus the .csv part).
+    sssub will then download both the samplesheet and the run tarball.  The samplesheet location
+    is provided in the Pub/Sub message; the raw run tarball location is provided within the 
+    Firestore document.
+  * sssub will then kick off bcl2fastq. 
+  * sssub will finally upload the demultiplexing results to the same Google Storage bucket that
+    contains the raw sequencing run, and its storage location will be recorded in Firestore document.
+
+Setup
+-------------
+
+You have a dedicated bucket for storing SampleSheets. A user, or some application, will upload a 
+SampleSheet to the bucket. The name of the SampleSheet must be equal to the sequencing run name
+followed by .csv, i.e. 191022_A00737_0011_BHNLYYDSXX.csv. 
 
 Note: while you don't need to use a Google compute instance to run the monitor script, the documentation
 here assumes that you are since it is the recommended way. That's due to the fact that the monitor
@@ -203,3 +224,5 @@ Then, you run the tests like so::
   monitor_integration_tests.py
 
 Note that you should be using a Google service account as described above. 
+
+.. _smon: https://pypi.org/project/sruns-monitor/
