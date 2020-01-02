@@ -6,6 +6,7 @@ from pprint import pformat
 import subprocess
 import sys
 import time
+import traceback
 
 import sruns_monitor as srm
 from sruns_monitor import exceptions as srm_exceptions
@@ -235,6 +236,9 @@ class Poll:
                 docref.update({srm.FIRESTORE_ATTR_SS_PUBSUB_DATA: jdata})
                 # Acknowledge the received message so it won't be sent again.
                 self.subscriber.acknowledge(self.subscription_path, ack_ids=[received_message.ack_id])
+        msg = f"Processing SampleSheet for run name {run_name}"
+        self.logger.info(msg)
+        self.send_mail(subject=f"ssub: {run_name}", body=msg)
         # Download raw run data
         download_dir = os.path.join(self.basedir, run_name, jdata["generation"])
         raw_rundir_path = gcstorage_utils.download(bucket=run_bucket, object_path=gs_rundir_path, download_dir=download_dir)
