@@ -8,7 +8,7 @@ python sruns_monitor/scripts/launch_samplesheet_subscriber.py -p cloudfunctions-
 
 import argparse
 
-from sruns_monitor.samplesheet_subscriber import Poll
+from samplesheetsubscriber.subscriber import Poll
 
 
 def get_parser():

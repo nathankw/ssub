@@ -1,0 +1,13 @@
+{
+    "mail": {
+        "host": "10.248.194.28",
+        "from": "nathanielwatson@stanfordhealthcare.org",
+        "tos": [
+            "nathanielwatson@stanfordhealthcare.org"
+        ]
+    },
+    "analysis_dir": "/Users/s0302521/Downloads/sssub/demux",
+    "name": "sssub",
+    "firestore_collection": "sruns",
+    "cycle_pause_sec": 60,
+}

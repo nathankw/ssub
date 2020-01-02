@@ -207,7 +207,7 @@ class Poll:
         # Extract tarball
         srm_utils.extract(raw_rundir_path, where=download_dir)
         # Launch bcl2fastq
-        demux_dir = self.run_bcl2fastq(rundir=os.path.join(download_dir, run_name, samplesheet=samplesheet_path)
+        demux_dir = self.run_bcl2fastq(rundir=os.path.join(download_dir, run_name), samplesheet=samplesheet_path)
         self.upload_demux(bucket=ss_bucket, path=demux_dir, run_name=run_name)
 
     def run_bcl2fastq(self, rundir, samplesheet):
