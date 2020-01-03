@@ -52,6 +52,12 @@ Setup
 
      gcloud beta pubsub subscriptions create --topic samplesheets sssub
 
+Locate the Cloud Storage service account and grant it the IAM role pubsub.publisher
+-----------------------------------------------------------------------------------
+By default, a bucket doesn't have the priviledge to send notifications to Pub/Sub. Follow the 
+instructions in steps 5 and 6 `here <https://cloud.google.com/storage/docs/reporting-changes>`_.
+
+
 Mail notifications
 ------------------
 If the 'mail' JSON object is set in your JSON configuration file, then the designated recipients will
