@@ -46,7 +46,7 @@ Setup
    gsutil for this as detailed `here <https://cloud.google.com/storage/docs/gsutil/commands/notification>`_.
    Here is an example command::
    
-     gsutil notification create -e OBJECT_FINALIZE -t samplesheets gs://samplesheets
+     gsutil notification create -e OBJECT_FINALIZE -f json -t samplesheets gs://samplesheets
 
 #. Create a Pub/Sub subscription. For example::
 
