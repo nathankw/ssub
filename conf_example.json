@@ -7,6 +7,6 @@
         ]
     },
     "name": "sssub",
-    "firestore_collection": "sequencing_runs",
+    "firestore_collection": "sruns",
     "cycle_pause_sec": 30
 }

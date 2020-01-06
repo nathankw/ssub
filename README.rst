@@ -39,7 +39,7 @@ Setup
    if necessary, but you can create one in advance if you'd like for manual testing. See the
    documentation for smon_ for details on the structure of the documents stored in this collection.
 #. Create a dedicated Google Storage bucket for storing your SampleSheets and give it a useful name,
-   i.e. samplesheets.
+   i.e. samplesheets.  Make sure to set the bucket to use Fine-Grained access control rather than Uniform.
 #. Create a dedicated Pub/Sub topic and give it a useful name, i.e. samplesheets.
 #. Create a `notification configuration`_ so that your samplesheets storage bucket will notify
    the samplesheets Pub/Sub topic whenever a new file is added or modified. Note that you can use
