@@ -28,7 +28,7 @@ GCP documentation for synchronous pull at https://cloud.google.com/pubsub/docs/p
 
 class Poll:
 
-    def __init__(self, subscription_name, conf_file, gcp_project_id=""):
+    def __init__(self, subscription_name, conf_file, gcp_project_id="", demuxtest=False):
         """
         Creates a sub directory named sssub_demultiplexing within the calling directory.
 
@@ -37,8 +37,10 @@ class Poll:
             gcp_project_id: `str`. The ID of the GCP project in which the subscription identified by
                 the 'subscription_name` parameter was created. If left blank, it will be extracted from
                 the standard environment variable GCP_PROJECT.
+            demuxtest: `bool`. True means to demultiplex only a single tile - handy when developing/testing. 
         """
         self.logger = self._set_logger()
+        self.demuxtest = demuxtest
         self.subscription_name = subscription_name
         self.conf = srm_utils.validate_conf(conf_file, schema_file=sssub.CONF_SCHEMA)
         #: The name of the subscriber client. The name will appear in the subject line if email notification
@@ -214,9 +216,7 @@ class Poll:
         # Check if we have a previous sample sheet message that we stored in the Firestore
         # document.
         samplesheet_pubsub_data = doc.get(srm.FIRESTORE_ATTR_SS_PUBSUB_DATA)
-        if not samplesheet_pubsub_data:
-            docref.update({srm.FIRESTORE_ATTR_SS_PUBSUB_DATA: jdata})
-        else:
+        if samplesheet_pubsub_data:
             # Check if generation number is the same.
             # If same, then we got a duplicate message from pubsub and can ignore it. But if
             # different, then the SampleSheet was re-uploaded and we should process it again
@@ -227,15 +227,13 @@ class Poll:
             if prev_gen == current_gen:
                 self.logger.info(f"Duplicate message with generation {current_gen}; skipping.")
                 # duplicate message sent. Rare, but possible occurrence.
-                # Acknowledge the received message so it won't be sent again.
                 self.subscriber.acknowledge(self.subscription_path, ack_ids=[received_message.ack_id])
                 return
-            else:
-                # Overwrite previous value for srm.FIRESTORE_ATTR_SS_PUBSUB_DATA with most
-                # recent pubsub message data.
-                docref.update({srm.FIRESTORE_ATTR_SS_PUBSUB_DATA: jdata})
-                # Acknowledge the received message so it won't be sent again.
-                self.subscriber.acknowledge(self.subscription_path, ack_ids=[received_message.ack_id])
+        # Overwrite previous value (or set initial value) for srm.FIRESTORE_ATTR_SS_PUBSUB_DATA with most
+        # recent pubsub message data.
+        docref.update({srm.FIRESTORE_ATTR_SS_PUBSUB_DATA: jdata})
+        # Acknowledge the received message so it won't be sent again.
+        self.subscriber.acknowledge(self.subscription_path, ack_ids=[received_message.ack_id])
         msg = f"Processing SampleSheet for run name {run_name}"
         self.logger.info(msg)
         self.send_mail(subject=f"ssub: {run_name}", body=msg)
@@ -269,6 +267,8 @@ class Poll:
         self.logger.info("Starting bcl2fastq for run {rundir} and SampleSheet {samplesheet}.")
         outdir = os.path.join(rundir, "demux")
         cmd = "bcl2fastq"
+        if self.demuxtest:
+            cmd += " --tiles s_1_0001"
         cmd += f" --sample-sheet {samplesheet} -R {rundir} --ignore-missing-bcls --ignore-missing-filter"
         cmd += f" --ignore-missing-positions --output-dir {outdir}"
         self.logger.info(cmd)

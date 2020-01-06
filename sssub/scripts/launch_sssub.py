@@ -16,6 +16,7 @@ def get_parser():
     parser.add_argument("-c", "--conf-file", required=True, help="""
         Path to JSON configuration file.
     """)
+    parser.add_argument("-d", "--demuxtest", action="store_true", help="True means to demultiplex only a single tile - handy when developing/testing.")
     parser.add_argument("-p", "--project_id", help="""
         The Google Cloud Project ID that contains the Pub/Sub topic that this tool is subscribed too.
         If not provided, then it is expected that the environment variable GCP_PROJECT has been set.
@@ -26,10 +27,11 @@ def get_parser():
 def main():
     parser = get_parser()
     args = parser.parse_args()
+    demuxtest = args.demuxtest
     project_id = args.project_id
     subscription_name = args.subscription_name
     conf_file = args.conf_file
-    poll = Poll(subscription_name=subscription_name, conf_file=conf_file, gcp_project_id=project_id)
+    poll = Poll(subscription_name=subscription_name, conf_file=conf_file, gcp_project_id=project_id, demuxtest=demuxtest)
     poll.start()
 
 
