@@ -10,13 +10,13 @@ import traceback
 
 import sruns_monitor as srm
 from sruns_monitor import exceptions as srm_exceptions
+from sruns_monitor.firestore_utils import FirestoreCollection
 from sruns_monitor import logging_utils
 from sruns_monitor  import gcstorage_utils
 from sruns_monitor import utils as srm_utils
 
 import sssub
 
-from google.cloud import firestore
 from google.cloud import pubsub_v1
 import google.api_core.exceptions
 
@@ -25,6 +25,21 @@ GCP documentation for creating a notification configuration at https://cloud.goo
 GCP documentation for synchronous pull at https://cloud.google.com/pubsub/docs/pull#synchronous_pull.
 """
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+
+class FirestoreMissingPubSubMessage(Exception):
+    """
+    Raised when an attempt is made to access `srm.FIRESTORE_ATTR_SS_PUBSUB_DATA` in a Firestore Document, but the attribute
+    isn't set.
+    """
+
+def get_basedir():
+    basedir = os.path.join(os.getcwd(), "sssub_demultiplexing")
+    if not os.path.exists(basedir):
+        logger.info("Creating directory " + os.path.join(os.getcwd(), self.basedir))
+        os.makedirs(self.basedir)
 
 class Poll:
 
@@ -33,11 +48,12 @@ class Poll:
         Creates a sub directory named sssub_demultiplexing within the calling directory.
 
         Args:
-            subscription_name: `str`. The name of the Pub
+            subscription_name: `str`. The name of the Pub/Sub subscription.
+            conf_file: `str`. Path to the JSON configurationn file. 
             gcp_project_id: `str`. The ID of the GCP project in which the subscription identified by
                 the 'subscription_name` parameter was created. If left blank, it will be extracted from
                 the standard environment variable GCP_PROJECT.
-            demuxtest: `bool`. True means to demultiplex only a single tile - handy when developing/testing. 
+            demuxtest: `bool`. True means to demultiplex only a single tile (s_1_1101) - handy when developing/testing. 
         """
         self.logger = self._set_logger()
         self.demuxtest = demuxtest
@@ -56,10 +72,7 @@ class Poll:
                 sys.exit(-1)
         #: Path to the base directory in which all further actions take place, i.e. downloads, 
         #: and running bcl2fastq. Will be created if the path does not yet exist.
-        self.basedir = os.path.join(os.getcwd(), "sssub_demultiplexing")
-        if not os.path.exists(self.basedir):
-            self.logger.info("Creating directory " + os.path.join(os.getcwd(), self.basedir))
-            os.makedirs(self.basedir)
+        self.basedir = get_basedir()
         #: When an analysis directory in the directory specified by `self.basedir` is older than
         #: this many seconds, remove it.
         #: If not specified in configuration file, defaults to 604800 (1 week).
@@ -68,11 +81,9 @@ class Poll:
         self.subscription_path = self.subscriber.subscription_path(self.gcp_project_id, self.subscription_name)
         self.logger.info(f"Subscription path: {self.subscription_path}")
         self.firestore_collection_name = self.conf[srm.C_FIRESTORE_COLLECTION]
-        self.firestore_coll = firestore.Client().collection(self.firestore_collection_name)
+        self.firestore_coll = FirestoreCollection(self.firestore_collection_name))
 
     def _set_logger(self):
-        logger = logging.getLogger("SampleSheetSubscriber")
-        logger.setLevel(logging.DEBUG)
         ch = logging.StreamHandler(stream=sys.stdout)
         ch.setLevel(logging.DEBUG)
         ch.setFormatter(logging_utils.FORMATTER)
@@ -111,20 +122,6 @@ class Poll:
             Body: {}
             """.format(subject, body))
         srm_utils.send_mail(from_addr=from_addr, to_addrs=tos, subject=subject, body=body, host=host)
-
-    def get_firestore_document(self, run_name):
-        """
-        Retrieves a document in the Firestore collection that has the given entry name.
-
-        Args:
-            run_name: `str`. The name of the sequencing run at hand. Used to query Firestore for a
-                document having the 'name' attribute set to this.
-
-        Returns: `google.cloud.firestore_v1.document.DocumentReference`
-        """
-
-        self.logger.info(f"Querying Firestore for a document with name '{run_name}'")
-        return self.firestore_coll.document(run_name)
 
     def get_msg_data(self, rcv_msg):
         """
@@ -198,12 +195,9 @@ class Poll:
         self.logger.info(f"Processing message for {jdata['selfLink']}")
         run_name = jdata[srm.FIRESTORE_ATTR_RUN_NAME].split(".")[0]
         # Query Firestore for the run metadata to grab the location in Google Storage of the raw run.
-        #: docref is a `google.cloud.firestore_v1.document.DocumentReference` object.
-        docref = self.get_firestore_document(run_name=run_name)
-        doc = docref.get().to_dict() # dict
-        if not doc:
-            msg = f"No Firestore document exists for run '{run_name}'."
-            raise srm_exceptions.FirestoreDocumentMissing(msg)
+        # The below line raises a sruns_monitor.exceptions.FirestoreDocumentMissing` Exception if 
+        # a Firestore Document doesn't exist with an ID of $run_name.
+        doc = self.firestore_coll.get(docid=run_name) # dict
         # Get path to raw run data (tarball) in Google Storage. Has bucket name as prefix, i.e.
         # mybucket/path/to/obj
         gs_rundir_path = doc.get(srm.FIRESTORE_ATTR_STORAGE)
@@ -231,7 +225,7 @@ class Poll:
                 return
         # Overwrite previous value (or set initial value) for srm.FIRESTORE_ATTR_SS_PUBSUB_DATA with most
         # recent pubsub message data.
-        docref.update({srm.FIRESTORE_ATTR_SS_PUBSUB_DATA: jdata})
+        self.firestore_coll.update(docid=run_name, payload={srm.FIRESTORE_ATTR_SS_PUBSUB_DATA: jdata})
         # Acknowledge the received message so it won't be sent again.
         self.subscriber.acknowledge(self.subscription_path, ack_ids=[received_message.ack_id])
         msg = f"Processing SampleSheet for run name {run_name}"
@@ -243,10 +237,60 @@ class Poll:
         ss_bucket = gcstorage_utils.get_bucket(jdata["bucket"])
         samplesheet_path = gcstorage_utils.download(bucket=ss_bucket, object_path=jdata["name"], download_dir=download_dir)
         # Extract tarball
-        srm_utils.extract(raw_rundir_path, where=download_dir)
+        self.extract(raw_rundir_path, download_dir)
         # Launch bcl2fastq
         demux_dir = self.run_bcl2fastq(rundir=os.path.join(download_dir, run_name), samplesheet=samplesheet_path)
         self.upload_demux(bucket=ss_bucket, path=demux_dir, run_name=run_name)
+
+
+    class Run:
+        def __init__(self, conf_file, run_name):
+            """
+            Args:
+                conf_file: `str`. Path to the JSON configurationn file. 
+                run_name: `str`. The name of the sequencing run to process. 
+            """
+            self.run_name = run_name
+            #: Path to the base directory in which all further actions take place, i.e. downloads, 
+            #: and running bcl2fastq. Will be created if the path does not yet exist.
+            self.basedir = get_basedir()
+            self.firestore_collection_name = self.conf[srm.C_FIRESTORE_COLLECTION]
+            self.firestore_coll = FirestoreCollection(self.firestore_collection_name))
+            self.firestore_doc = self.firestore_coll.get(run_name)
+            self.psmsg = self.firestore_doc.get(srm.FIRESTORE_ATTR_SS_PUBSUB_DATA)
+            if not self.psmsg:
+                msg = f"Firestore document ID '{run_name}' does not have a value set for attribute '{srm.FIRESTORE_ATTR_SS_PUBSUB_DATA}'.")
+                self.logger.critical(msg)
+                raise FirestoreMissingPubSubMessage(msg)
+            # Get path to raw run data (tarball) in Google Storage. Has bucket name as prefix, i.e.
+            # mybucket/path/to/obj
+            gs_rundir_path = self.firestore_doc.get(srm.FIRESTORE_ATTR_STORAGE)
+            if not gs_rundir_path:
+                msg = f"Firestore document '{self.run_name}' doesn't have the storage path attribute '{srm.FIRESTORE_ATTR_STORAGE}' set!"
+                msg += f" Did the sequencing run finish uploading to Google Storeage yet?"
+                raise srm_exceptions.FirestoreDocumentMissingStoragePath(msg)
+            run_bucket_name, self.gs_rundir_path = gs_rundir_path.split("/", 1)
+            self.run_bucket = gcstorage_utils.get_bucket(run_bucket_name)
+            self.download_dir = self.get_download_dir()
+
+        def get_download_dir(self):
+            return os.path.join(self.basedir, self.run_name, self.psmsg["generation"])
+    
+        def download_samplesheet(self):
+            ss_bucket = gcstorage_utils.get_bucket(self.psmsg["bucket"])
+            samplesheet_path = gcstorage_utils.download(bucket=ss_bucket, object_path=self.psmsg["name"], download_dir=self.download_dir)
+   
+        def download_rawrun(self):
+            raw_rundir_path = gcstorage_utils.download(bucket=self.run_bucket, object_path=self.gs_rundir_path, download_dir=self.download_dir)
+                
+        def extract(self, raw_rundir_path, download_dir):
+        srm_utils.extract(raw_rundir_path, where=download_dir)
+
+
+
+
+
+
 
     def run_bcl2fastq(self, rundir, samplesheet):
         """
@@ -268,7 +312,7 @@ class Poll:
         outdir = os.path.join(rundir, "demux")
         cmd = "bcl2fastq"
         if self.demuxtest:
-            cmd += " --tiles s_1_0001"
+            cmd += " --tiles s_1_1101"
         cmd += f" --sample-sheet {samplesheet} -R {rundir} --ignore-missing-bcls --ignore-missing-filter"
         cmd += f" --ignore-missing-positions --output-dir {outdir}"
         self.logger.info(cmd)
@@ -289,7 +333,7 @@ class Poll:
         Args:
             bucket_name: `str`. The name of the bucket.
             path: `str`. The path to the folder that contains the demultiplexing results.
-            run_name: `str`. Name of the sequencing run (rundir).
+            run_name: `str`. Name of the sequencing run.
         """
         bucket_path = f"{run_name}/"
         self.logger.info(f"Uploading demultiplexing results for run {run_name}")
