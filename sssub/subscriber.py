@@ -58,6 +58,7 @@ class Poll:
         self.logger = self._set_logger()
         self.demuxtest = demuxtest
         self.subscription_name = subscription_name
+        self.conf_file = conf_file
         self.conf = srm_utils.validate_conf(conf_file, schema_file=sssub.CONF_SCHEMA)
         #: The name of the subscriber client. The name will appear in the subject line if email notification
         #: is configured, as well as in other places, i.e. log messages.
@@ -198,15 +199,6 @@ class Poll:
         # The below line raises a sruns_monitor.exceptions.FirestoreDocumentMissing` Exception if 
         # a Firestore Document doesn't exist with an ID of $run_name.
         doc = self.firestore_coll.get(docid=run_name) # dict
-        # Get path to raw run data (tarball) in Google Storage. Has bucket name as prefix, i.e.
-        # mybucket/path/to/obj
-        gs_rundir_path = doc.get(srm.FIRESTORE_ATTR_STORAGE)
-        if not gs_rundir_path:
-            msg = f"Firestore document '{run_name}' doesn't have the storage path attribute '{srm.FIRESTORE_ATTR_STORAGE}' set!"
-            msg += f" Did the sequencing run finish uploading to Google Storeage yet?"
-            raise srm_exceptions.FirestoreDocumentMissingStoragePath(msg)
-        run_bucket_name, gs_rundir_path = gs_rundir_path.split("/", 1)
-        run_bucket = gcstorage_utils.get_bucket(run_bucket_name)
         # Check if we have a previous sample sheet message that we stored in the Firestore
         # document.
         samplesheet_pubsub_data = doc.get(srm.FIRESTORE_ATTR_SS_PUBSUB_DATA)
@@ -231,25 +223,20 @@ class Poll:
         msg = f"Processing SampleSheet for run name {run_name}"
         self.logger.info(msg)
         self.send_mail(subject=f"ssub: {run_name}", body=msg)
-        # Download raw run data
-        download_dir = os.path.join(self.basedir, run_name, jdata["generation"])
-        raw_rundir_path = gcstorage_utils.download(bucket=run_bucket, object_path=gs_rundir_path, download_dir=download_dir)
-        ss_bucket = gcstorage_utils.get_bucket(jdata["bucket"])
-        samplesheet_path = gcstorage_utils.download(bucket=ss_bucket, object_path=jdata["name"], download_dir=download_dir)
-        # Extract tarball
-        self.extract(raw_rundir_path, download_dir)
-        # Launch bcl2fastq
-        demux_dir = self.run_bcl2fastq(rundir=os.path.join(download_dir, run_name), samplesheet=samplesheet_path)
-        self.upload_demux(bucket=ss_bucket, path=demux_dir, run_name=run_name)
+        # Download raw run and SampleSheet and demultiplex
+        wf = Workflow(conf_file=self.conf_file, run_name=run_name)
+        wf.run()
 
 
-    class Run:
+    class Workflow:
         def __init__(self, conf_file, run_name):
             """
             Args:
                 conf_file: `str`. Path to the JSON configurationn file. 
                 run_name: `str`. The name of the sequencing run to process. 
             """
+            self.conf_file = conf_file
+            self.conf = srm_utils.validate_conf(conf_file, schema_file=sssub.CONF_SCHEMA)
             self.run_name = run_name
             #: Path to the base directory in which all further actions take place, i.e. downloads, 
             #: and running bcl2fastq. Will be created if the path does not yet exist.
@@ -273,71 +260,86 @@ class Poll:
             self.run_bucket = gcstorage_utils.get_bucket(run_bucket_name)
             self.download_dir = self.get_download_dir()
 
+        def get_local_rundir_path(self):
+            """
+            Absolute, local path to the sequencing run directory. 
+            Once downloaded by `self.download_rawrun`, this should be it's full path.
+            """
+            return os.path.join(self.download_dir, self.run_name)
+
+        def get_local_samplesheet_path(self):
+            """
+            Absolute, local path to the samplesheet file. 
+            Once downloaded by `self.download_samplesheet`, this should be it's full path.
+            """
+            return os.path.join(self.download_dir, self.psmsg["name"])
+
+        def run(self):
+            self.download_samplesheet()
+            raw_rundir_path = self.download_rawrun()
+            # Extract tarball in same directory in which raw_rundir_path resides
+            self.extract_run(raw_rundir_path)
+            # Launch bcl2fastq
+            demux_dir = self.run_bcl2fastq()
+            self.upload_demux(path=demux_dir)
+
         def get_download_dir(self):
             return os.path.join(self.basedir, self.run_name, self.psmsg["generation"])
     
         def download_samplesheet(self):
             ss_bucket = gcstorage_utils.get_bucket(self.psmsg["bucket"])
             samplesheet_path = gcstorage_utils.download(bucket=ss_bucket, object_path=self.psmsg["name"], download_dir=self.download_dir)
+            return samplesheet_path
    
         def download_rawrun(self):
             raw_rundir_path = gcstorage_utils.download(bucket=self.run_bucket, object_path=self.gs_rundir_path, download_dir=self.download_dir)
+            return raw_rundir_path
                 
-        def extract(self, raw_rundir_path, download_dir):
-        srm_utils.extract(raw_rundir_path, where=download_dir)
+        def extract_run(self, raw_rundir_path):
+            srm_utils.extract(raw_rundir_path, where=self.download_dir)
 
+        def run_bcl2fastq(self):
+            """
+            Demultiplexes the provided run directory using bcl2fastq and outputs the results in a
+            folder named 'demux' that will reside within the run directory.
+    
+            Returns:
+                `str`. The path to the directory that contains the demultiplexing results.
+    
+            Raises:
+                `subprocess.SubprocessError`: There was a problem running bcl2fastq. The STDOUT and
+                    STDERR will be logged.
+            """
+            rundir = self.get_local_rundir_path()
+            samplesheet_path = self.get_local_samplesheet_path()
+            self.logger.info("Starting bcl2fastq for run {rundir} and SampleSheet {samplesheet_path}.")
+            outdir = os.path.join(rundir, "demux")
+            cmd = "bcl2fastq"
+            if self.demuxtest:
+                cmd += " --tiles s_1_1101"
+            cmd += f" --sample-sheet {samplesheet_path} -R {rundir} --ignore-missing-bcls --ignore-missing-filter"
+            cmd += f" --ignore-missing-positions --output-dir {outdir}"
+            self.logger.info(cmd)
+            try:
+                stdout, stderr = srm_utils.create_subprocess(cmd)
+            except subprocess.SubprocessError as e:
+                self.logger.critical(str(e))
+                raise
+            self.logger.info(f"Finished running bcl2fastq. STDOUT was '{stdout}', STDERR was '{stderr}'.")
+            return outdir
 
-
-
-
-
-
-    def run_bcl2fastq(self, rundir, samplesheet):
-        """
-        Demultiplexes the provided run directory using bcl2fastq and outputs the results in a
-        folder named 'demux' that will reside within the run directory.
-
-        Args:
-            rundir: `str`. Directory path to the sequencing run.
-            samplesheet_path: `str`. Directory path to the SampleSheet.
-
-        Returns:
-            `str`. The path to the directory that contains the demultiplexing results.
-
-        Raises:
-            `subprocess.SubprocessError`: There was a problem running bcl2fastq. The STDOUT and
-                STDERR will be logged.
-        """
-        self.logger.info("Starting bcl2fastq for run {rundir} and SampleSheet {samplesheet}.")
-        outdir = os.path.join(rundir, "demux")
-        cmd = "bcl2fastq"
-        if self.demuxtest:
-            cmd += " --tiles s_1_1101"
-        cmd += f" --sample-sheet {samplesheet} -R {rundir} --ignore-missing-bcls --ignore-missing-filter"
-        cmd += f" --ignore-missing-positions --output-dir {outdir}"
-        self.logger.info(cmd)
-        try:
-            stdout, stderr = srm_utils.create_subprocess(cmd)
-        except subprocess.SubprocessError as e:
-            self.logger.critical(str(e))
-            raise
-        self.logger.info(f"Finished running bcl2fastq. STDOUT was '{stdout}', STDERR was '{stderr}'.")
-        return outdir
-
-    def upload_demux(self, bucket_name,  path, run_name):
-        """
-        Uploads a demultiplexing results folder to Google Storage. For example, if the run name
-        is BOB and the demultiplexing folder is at /path/to/BOB/demux, and the bucket is
-        named myruns, then the folder will be uploaded to gs://myruns/BOB/demux.
-
-        Args:
-            bucket_name: `str`. The name of the bucket.
-            path: `str`. The path to the folder that contains the demultiplexing results.
-            run_name: `str`. Name of the sequencing run.
-        """
-        bucket_path = f"{run_name}/"
-        self.logger.info(f"Uploading demultiplexing results for run {run_name}")
-        gcstorage_utils.upload_folder(bucket=bucket, folder=path, bucket_path=bucket_path)
+        def upload_demux(self, path):
+            """
+            Uploads a demultiplexing results folder to Google Storage. For example, if the run name
+            is BOB and the demultiplexing folder is at /path/to/BOB/demux, and the bucket is
+            named myruns, then the folder will be uploaded to gs://myruns/BOB/demux.
+    
+            Args:
+                path: `str`. The path to the folder that contains the demultiplexing results.
+            """
+            bucket_path = f"{self.run_name}/"
+            self.logger.info(f"Uploading demultiplexing results for run {self.run_name}")
+            gcstorage_utils.upload_folder(bucket=self.run_bucket, folder=path, bucket_path=bucket_path)
 
     def start(self):
         interval = self.conf.get(srm.C_CYCLE_PAUSE_SEC, 60)
