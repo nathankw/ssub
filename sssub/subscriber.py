@@ -27,6 +27,10 @@ GCP documentation for synchronous pull at https://cloud.google.com/pubsub/docs/p
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+ch = logging.StreamHandler(stream=sys.stdout)
+ch.setLevel(logging.DEBUG)
+ch.setFormatter(logging_utils.FORMATTER)
+logger.addHandler(ch)
 
 
 class FirestoreMissingPubSubMessage(Exception):
@@ -86,10 +90,6 @@ class Poll:
         self.firestore_coll = FirestoreCollection(self.firestore_collection_name)
 
     def _set_logger(self):
-        ch = logging.StreamHandler(stream=sys.stdout)
-        ch.setLevel(logging.DEBUG)
-        ch.setFormatter(logging_utils.FORMATTER)
-        logger.addHandler(ch)
         # Add debug file handler to the logger:
         logging_utils.add_file_handler(logger=logger, log_dir=srm.LOG_DIR, level=logging.DEBUG, tag="debug")
         # Add error file handler to the logger:
@@ -335,7 +335,7 @@ class Workflow:
         """
         rundir = self.get_local_rundir_path()
         samplesheet_path = self.get_local_samplesheet_path()
-        logger.info("Starting bcl2fastq for run {rundir} and SampleSheet {samplesheet_path}.")
+        logger.info(f"Starting bcl2fastq for run {rundir} and SampleSheet {samplesheet_path}.")
         outdir = os.path.join(rundir, "demux")
         cmd = "bcl2fastq"
         if self.demuxtest:
