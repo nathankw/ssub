@@ -40,6 +40,7 @@ def get_basedir():
     if not os.path.exists(basedir):
         logger.info("Creating directory " + os.path.join(os.getcwd(), self.basedir))
         os.makedirs(self.basedir)
+    return basedir
 
 class Poll:
 
@@ -82,7 +83,7 @@ class Poll:
         self.subscription_path = self.subscriber.subscription_path(self.gcp_project_id, self.subscription_name)
         self.logger.info(f"Subscription path: {self.subscription_path}")
         self.firestore_collection_name = self.conf[srm.C_FIRESTORE_COLLECTION]
-        self.firestore_coll = FirestoreCollection(self.firestore_collection_name))
+        self.firestore_coll = FirestoreCollection(self.firestore_collection_name)
 
     def _set_logger(self):
         ch = logging.StreamHandler(stream=sys.stdout)
@@ -224,7 +225,7 @@ class Poll:
         self.logger.info(msg)
         self.send_mail(subject=f"ssub: {run_name}", body=msg)
         # Download raw run and SampleSheet and demultiplex
-        wf = Workflow(conf_file=self.conf_file, run_name=run_name)
+        wf = Workflow(conf_file=self.conf_file, run_name=run_name, demuxtest=self.demuxtest)
         wf.run()
 
     def start(self):
@@ -249,25 +250,27 @@ class Poll:
 
 
 class Workflow:
-    def __init__(self, conf_file, run_name):
+    def __init__(self, conf_file, run_name, demuxtest=False):
         """
         Args:
             conf_file: `str`. Path to the JSON configurationn file. 
             run_name: `str`. The name of the sequencing run to process. 
+            demuxtest: `bool`. True means to demultiplex only a single tile (s_1_1101) - handy when developing/testing.
         """
         self.conf_file = conf_file
         self.conf = srm_utils.validate_conf(conf_file, schema_file=sssub.CONF_SCHEMA)
         self.run_name = run_name
+        self.demuxtest = demuxtest
         #: Path to the base directory in which all further actions take place, i.e. downloads, 
         #: and running bcl2fastq. Will be created if the path does not yet exist.
         self.basedir = get_basedir()
         self.firestore_collection_name = self.conf[srm.C_FIRESTORE_COLLECTION]
-        self.firestore_coll = FirestoreCollection(self.firestore_collection_name))
+        self.firestore_coll = FirestoreCollection(self.firestore_collection_name)
         self.firestore_doc = self.firestore_coll.get(run_name)
         self.psmsg = self.firestore_doc.get(srm.FIRESTORE_ATTR_SS_PUBSUB_DATA)
         if not self.psmsg:
-            msg = f"Firestore document ID '{run_name}' does not have a value set for attribute '{srm.FIRESTORE_ATTR_SS_PUBSUB_DATA}'.")
-            self.logger.critical(msg)
+            msg = f"Firestore document ID '{run_name}' does not have a value set for attribute '{srm.FIRESTORE_ATTR_SS_PUBSUB_DATA}'."
+            logger.critical(msg)
             raise FirestoreMissingPubSubMessage(msg)
         # Get path to raw run data (tarball) in Google Storage. Has bucket name as prefix, i.e.
         # mybucket/path/to/obj
@@ -332,20 +335,20 @@ class Workflow:
         """
         rundir = self.get_local_rundir_path()
         samplesheet_path = self.get_local_samplesheet_path()
-        self.logger.info("Starting bcl2fastq for run {rundir} and SampleSheet {samplesheet_path}.")
+        logger.info("Starting bcl2fastq for run {rundir} and SampleSheet {samplesheet_path}.")
         outdir = os.path.join(rundir, "demux")
         cmd = "bcl2fastq"
         if self.demuxtest:
             cmd += " --tiles s_1_1101"
         cmd += f" --sample-sheet {samplesheet_path} -R {rundir} --ignore-missing-bcls --ignore-missing-filter"
         cmd += f" --ignore-missing-positions --output-dir {outdir}"
-        self.logger.info(cmd)
+        logger.info(cmd)
         try:
             stdout, stderr = srm_utils.create_subprocess(cmd)
         except subprocess.SubprocessError as e:
-            self.logger.critical(str(e))
+            logger.critical(str(e))
             raise
-        self.logger.info(f"Finished running bcl2fastq. STDOUT was '{stdout}', STDERR was '{stderr}'.")
+        logger.info(f"Finished running bcl2fastq. STDOUT was '{stdout}', STDERR was '{stderr}'.")
         return outdir
 
     def upload_demux(self, path):
@@ -358,6 +361,6 @@ class Workflow:
             path: `str`. The path to the folder that contains the demultiplexing results.
         """
         bucket_path = f"{self.run_name}/"
-        self.logger.info(f"Uploading demultiplexing results for run {self.run_name}")
+        logger.info(f"Uploading demultiplexing results for run {self.run_name}")
         gcstorage_utils.upload_folder(bucket=self.run_bucket, folder=path, bucket_path=bucket_path)
 
