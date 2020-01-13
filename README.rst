@@ -16,27 +16,24 @@ How it works
 SampleSheets Subscriber (sssub) solves the aforementioned challenges by utilizing the power of GCP
 events and triggers. At a high level, it works as follows:
 
-  * User/application uploads a samplesheet to a dedicated bucket. The sample sheet naming convention 
-    is ${RUN_NAME }.csv.
-  * Google Storage immediately fires off an event to a Pub/Sub topic (whenever there is a new SampleSheet
-    or when an existing one is overwritten).
-  * Meanwhile, sssub is running on a compute instance as a daemon process.  It is subscribed to that 
-    same Pub/Sub topic. sssub polls the topic for new messages regularly, i.e. once a minute.
-  * When sssub receives a new message, the script parses information about the event.
-  * sssub will the query the Firestore collection - the same one used by smon_ - for a 
-    document whose name is equal to the samplesheet name (minus the .csv part).
-    sssub will then download both the samplesheet and the run tarball.  The samplesheet location
-    is provided in the Pub/Sub message; the raw run tarball location is provided within the 
-    Firestore document.
-  * sssub will then kick off bcl2fastq. 
-  * Demultiplexing results are output in a folder name 'demux' within the local run directory.
-  * sssub will upload the demux folder to the same Google Storage folder that
-    contains the raw sequencing run.
-  * sssub will update the relevant Firestore document to add the location to the demux folder in 
-    Google Storage.
-
-Resilience
-----------
+  #. User/application uploads a samplesheet to a dedicated bucket. The sample sheet naming convention 
+     is ${RUN_NAME }.csv.
+  #. Google Storage immediately fires off an event to a Pub/Sub topic (whenever there is a new SampleSheet
+     or when an existing one is overwritten).
+  #. Meanwhile, sssub is running on a compute instance as a daemon process.  It is subscribed to that 
+     same Pub/Sub topic. sssub polls the topic for new messages regularly, i.e. once a minute.
+  #. When sssub receives a new message, the script parses information about the event.
+  #. sssub will the query the Firestore collection - the same one used by smon_ - for a 
+     document whose name is equal to the samplesheet name (minus the .csv part).
+     sssub will then download both the samplesheet and the run tarball.  The samplesheet location
+     is provided in the Pub/Sub message; the raw run tarball location is provided within the 
+     Firestore document.
+  #. sssub will then kick off bcl2fastq. 
+  #. Demultiplexing results are output in a folder name 'demux' within the local run directory.
+  #. sssub will upload the demux folder to the same Google Storage folder that
+     contains the raw sequencing run.
+  #. sssub will update the relevant Firestore document to add the location to the demux folder in 
+     Google Storage.
 
 Reanalysis
 ==========
@@ -67,12 +64,12 @@ one of these two insances will actually make use of it. It works as follows:
     #. Instance 1 of sssub receives a new message from Pub/Sub and immediately begings to process it.
     #. Instances 1 downloads and parses the corresponding Firestore document that's related to the
        SampleSheet detailed within the Pub/Sub message.
-    #. Instance 1 notices that the document doesn't have the `srm.FIRESTORE_ATTR_SS_PUBSUB_DATA` 
+    #. Instance 1 notices that the document doesn't have the :func:`sssub.FIRESTORE_ATTR_SS_PUBSUB_DATA` 
        attribute set, so then sets it to the value of the JSON serialized of the PUb/Sub message
        data.
     #. Meanwhile, Instance 2 of sssub has also pulled down the same Pub/Sub message.
     #. Instance 2 queries Firestore and downloads the corresponding document. 
-    #. Instance 2 notices that the document attribute `srm.FIRESTORE_ATTR_SS_PUBSUB_DATA` is already
+    #. Instance 2 notices that the document attribute :func:`sssub.FIRESTORE_ATTR_SS_PUBSUB_DATA` is already
        set, so it downloades this JSON value.
     #. Instance 2 then parses the generation number out of the JSON value it downloaded from
        Firestore and notices that the generation number is the same as the generation number in the
@@ -83,7 +80,7 @@ one of these two insances will actually make use of it. It works as follows:
 Let's now take a few steps back and pose the question - What if Instance 2 noticed that the generation
 numbers differ? Well, in this case, it will continue on to run the demultiplexing workflow since
 there are different versions of the SampleSheet at hand. It will also, however, first set the 
-Firestore document's `srm.FIRESTORE_ATTR_SS_PUBSUB_DATA` attribute to the JSON serialization of the
+Firestore document's :func:`sssub.FIRESTORE_ATTR_SS_PUBSUB_DATA` attribute to the JSON serialization of the
 Pub/Sub message data that it's working on. 
 
 
