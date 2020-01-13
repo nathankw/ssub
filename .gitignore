@@ -1,3 +1,6 @@
+build
+dist 
+**.egg*
 *.swp
 *.pyc
 sssub_demultiplexing

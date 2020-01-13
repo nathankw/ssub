@@ -64,12 +64,12 @@ one of these two insances will actually make use of it. It works as follows:
     #. Instance 1 of sssub receives a new message from Pub/Sub and immediately begings to process it.
     #. Instances 1 downloads and parses the corresponding Firestore document that's related to the
        SampleSheet detailed within the Pub/Sub message.
-    #. Instance 1 notices that the document doesn't have the :func:`sssub.FIRESTORE_ATTR_SS_PUBSUB_DATA` 
+    #. Instance 1 notices that the document doesn't have the `sssub.FIRESTORE_ATTR_SS_PUBSUB_DATA` 
        attribute set, so then sets it to the value of the JSON serialized of the PUb/Sub message
        data.
     #. Meanwhile, Instance 2 of sssub has also pulled down the same Pub/Sub message.
     #. Instance 2 queries Firestore and downloads the corresponding document. 
-    #. Instance 2 notices that the document attribute :func:`sssub.FIRESTORE_ATTR_SS_PUBSUB_DATA` is already
+    #. Instance 2 notices that the document attribute `sssub.FIRESTORE_ATTR_SS_PUBSUB_DATA` is already
        set, so it downloades this JSON value.
     #. Instance 2 then parses the generation number out of the JSON value it downloaded from
        Firestore and notices that the generation number is the same as the generation number in the
@@ -80,7 +80,7 @@ one of these two insances will actually make use of it. It works as follows:
 Let's now take a few steps back and pose the question - What if Instance 2 noticed that the generation
 numbers differ? Well, in this case, it will continue on to run the demultiplexing workflow since
 there are different versions of the SampleSheet at hand. It will also, however, first set the 
-Firestore document's :func:`sssub.FIRESTORE_ATTR_SS_PUBSUB_DATA` attribute to the JSON serialization of the
+Firestore document's `sssub.FIRESTORE_ATTR_SS_PUBSUB_DATA` attribute to the JSON serialization of the
 Pub/Sub message data that it's working on. 
 
 
@@ -106,7 +106,7 @@ Setup
 
 #. Locate the Cloud Storage service account and grant it the IAM role pubsub.publisher
    By default, a bucket doesn't have the priviledge to send notifications to Pub/Sub. Follow the 
-   instructions in steps 5 and 6 `here <https://cloud.google.com/storage/docs/reporting-changes>`_.
+   instructions in steps 5 and 6 `at <https://cloud.google.com/storage/docs/reporting-changes>`_.
 
 
 Mail notifications
