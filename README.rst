@@ -60,9 +60,9 @@ Storage, each of which exist within a folder named after the original generation
 Scalablilty
 -----------
 While thare aren't any parallel steps in sssub, you can achieve scalability by launching two or more
-instances of sssub, either on a single, beefy compute instance, or on separate ones. While it's 
-certainly possible that two running instances of sssub will pull the same message from Pub/Sub, only
-one of these two processes will actually make use of it. It works as follows: 
+instances of sssub, either on one single, beefy compute instance, or on separate ones. While it's 
+certainly possible that two running instances of sssub can pull the same message from Pub/Sub, only
+one of these two insances will actually make use of it. It works as follows: 
 
     #. Instance 1 of sssub receives a new message from Pub/Sub and immediately begings to process it.
     #. Instances 1 downloads and parses the corresponding Firestore document that's related to the
@@ -76,14 +76,15 @@ one of these two processes will actually make use of it. It works as follows:
        set, so it downloades this JSON value.
     #. Instance 2 then parses the generation number out of the JSON value it downloaded from
        Firestore and notices that the generation number is the same as the generation number in the
-       Pub/Sub message that it is currently parsing. 
-    #. Instance 2 logs a message that it is deferring processing - leaving the rest of the work to
-       be fulfilled by Instance 1. 
+       Pub/Sub message that it is currently working on.
+    #. Instance 2 logs a message that it is deferring further processing - thus leaving the rest 
+       of the work to be fulfilled by Instance 1. 
 
 Let's now take a few steps back and pose the question - What if Instance 2 noticed that the generation
 numbers differ? Well, in this case, it will continue on to run the demultiplexing workflow since
-there are different versions of the SampleSheet at hand. 
-
+there are different versions of the SampleSheet at hand. It will also, however, first set the 
+Firestore document's `srm.FIRESTORE_ATTR_SS_PUBSUB_DATA` attribute to the JSON serialization of the
+Pub/Sub message data that it's working on. 
 
 
 Setup
@@ -106,10 +107,9 @@ Setup
 
      gcloud beta pubsub subscriptions create --topic samplesheets sssub
 
-Locate the Cloud Storage service account and grant it the IAM role pubsub.publisher
------------------------------------------------------------------------------------
-By default, a bucket doesn't have the priviledge to send notifications to Pub/Sub. Follow the 
-instructions in steps 5 and 6 `here <https://cloud.google.com/storage/docs/reporting-changes>`_.
+#. Locate the Cloud Storage service account and grant it the IAM role pubsub.publisher
+   By default, a bucket doesn't have the priviledge to send notifications to Pub/Sub. Follow the 
+   instructions in steps 5 and 6 `here <https://cloud.google.com/storage/docs/reporting-changes>`_.
 
 
 Mail notifications
@@ -137,10 +137,10 @@ collection to use, for example. The possible keys are:
   * `sweep_age_sec`: When a run in the completed runs directory is older than this many seconds, 
     remove it. Defaults to 604800 (1 week).
 
-The user-supplied configuration file is validated in the Monitor against a built-in schema. 
+The user-supplied configuration file is validated against a built-in schema. 
 
-Installation and setup
-======================
+Installation
+============
 This works in later versions of Python 3 only::
 
   pip3 install sssub
@@ -151,6 +151,14 @@ with the following roles:
   * roles/storage.objectAdmin
   * roles/datastore.owner
 
+Alternatively, give your compute instance the cloud-platform scope.
+
+Deployment:
+===========
+It is suggested to use the Dockerfile that comes in the respository.
+
 
 .. _smon: https://pypi.org/project/sruns-monitor/
 .. _`notification configuration`: https://cloud.google.com/storage/docs/pubsub-notifications
+
+
