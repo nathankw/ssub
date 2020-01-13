@@ -40,6 +40,11 @@ class FirestoreMissingPubSubMessage(Exception):
     """
 
 def get_basedir():
+    """
+    Calculates the base directory in which all downstream actions take place, i.e. downloading and
+    analysis. The base directory is set as a fodler named sssub_demultiplexing that resided within
+    the calling directory.
+    """
     basedir = os.path.join(os.getcwd(), "sssub_demultiplexing")
     if not os.path.exists(basedir):
         logger.info("Creating directory " + os.path.join(os.getcwd(), self.basedir))
@@ -47,6 +52,7 @@ def get_basedir():
     return basedir
 
 class Poll:
+    "howdy"
 
     def __init__(self, subscription_name, conf_file, gcp_project_id="", demuxtest=False):
         """
@@ -90,6 +96,10 @@ class Poll:
         self.firestore_coll = FirestoreCollection(self.firestore_collection_name)
 
     def _set_logger(self):
+        """
+        Adds two file handlers to the logger: one that accepts debug-level messages and another that
+        accepts error-level messages.
+        """
         # Add debug file handler to the logger:
         logging_utils.add_file_handler(logger=logger, log_dir=srm.LOG_DIR, level=logging.DEBUG, tag="debug")
         # Add error file handler to the logger:
@@ -97,6 +107,9 @@ class Poll:
         return logger
 
     def get_mail_params(self):
+        """
+        Parses the mail configuration out of the provided configuration file.
+        """
         return self.conf.get(srm.C_MAIL)
 
     def send_mail(self, subject, body):
@@ -140,9 +153,9 @@ class Poll:
             us something like this:
 
             > jdata = json.loads(rcv_msg.message.data)
-            > print(json.dumps(jdata), indent=4)
+            > print(json.dumps(jdata), indent=4)::
 
-            {
+              {
                 "kind": "storage#object",
                 "id": "mysamplesheets/191022_A00737_0011_BHNLYYDSXX.csv/1576441248192471",
                 "selfLink": "https://www.googleapis.com/storage/v1/b/mysamplesheets/o/191022_A00737_0011_BHNLYYDSXX.csv",
@@ -160,7 +173,8 @@ class Poll:
                 "mediaLink": "https://www.googleapis.com/download/storage/v1/b/mysamplesheets/o/191022_A00737_0011_BHNLYYDSXX.csv?generation=1576441248192471&alt=media",
                 "crc32c": "kgzmwA==",
                 "etag": "CNev7qS9uOYCEAE="
-            }
+              }
+
         """
         #: msg is a `google.cloud.pubsub_v1.types.PubsubMessage`
         msg = rcv_msg.message
@@ -250,6 +264,10 @@ class Poll:
 
 
 class Workflow:
+    """
+    Runs the demultiplexing workflow. 
+    """
+
     def __init__(self, conf_file, run_name, demuxtest=False):
         """
         Args:
@@ -281,7 +299,7 @@ class Workflow:
             raise srm_exceptions.FirestoreDocumentMissingStoragePath(msg)
         run_bucket_name, self.gs_rundir_path = gs_rundir_path.split("/", 1)
         self.run_bucket = gcstorage_utils.get_bucket(run_bucket_name)
-        self.download_dir = self.get_download_dir()
+        self.download_dir = self._get_download_dir()
 
     def get_local_rundir_path(self):
         """
@@ -298,6 +316,19 @@ class Workflow:
         return os.path.join(self.download_dir, self.psmsg["name"])
 
     def run(self):
+        """
+        Carries out the demultiplexing worklow now that all of the necessary information is readily
+        available, i.e. SampleSheet path and raw run path. 
+
+        It works by:
+
+          #. Downloading the SampleSheet to `self.download_dir`. 
+          #. Downloading the run directory (tarball) to `self.download_dir`. 
+          #. Extracting the raw run in `self.download_dir`. 
+          #. Running bcl2fastq and outputting a folder called demux in the local run directoy.
+          #. Uploading the demux folder to the same bucket in the same folder in which the raw 
+             sequencing run is stored.
+        """
         self.download_samplesheet()
         raw_rundir_path = self.download_rawrun()
         # Extract tarball in same directory in which raw_rundir_path resides
@@ -306,19 +337,55 @@ class Workflow:
         demux_dir = self.run_bcl2fastq()
         self.upload_demux(path=demux_dir)
 
-    def get_download_dir(self):
+    def _get_download_dir(self):
+        """
+        Figures out what directory to use for downloading the SampelSheet and sequencing run (tarball).
+        The download directory path is calculated as the concatenation of the following components:
+
+            #. `self.basedir` followed by
+            #. a directory named after the sequecing run, followed by
+            #. a directory named after the SampeSheet files generation number (see note below).
+ 
+        The generation number identifies the version of a particular file in Google Strorage.
+        It has the form of a long, random number, even though it is not random. 
+        For example, each time the SampleSheet file is updated, a new generation number is created
+        to identify this verion of the file. 
+        """
         return os.path.join(self.basedir, self.run_name, self.psmsg["generation"])
 
     def download_samplesheet(self):
+        """
+        Downloads the SampleSheet that was originally uploaded to the bucket that initiated the 
+        Pub/Sub message flow.  The SampleSheet is downloaded to `self.download_dir`. 
+
+        Returns:
+            `str`. The path to the downloaded SampleSheet file.
+        """
         ss_bucket = gcstorage_utils.get_bucket(self.psmsg["bucket"])
         samplesheet_path = gcstorage_utils.download(bucket=ss_bucket, object_path=self.psmsg["name"], download_dir=self.download_dir)
         return samplesheet_path
    
     def download_rawrun(self):
+        """
+        Downloads the raw run directory object (`self.gs_rundir_path`) from Google Storage to `self.download_dir`. 
+
+        Returns:
+            `str`. The path to the downloaded raw run file (tarball).
+            
+        """
         raw_rundir_path = gcstorage_utils.download(bucket=self.run_bucket, object_path=self.gs_rundir_path, download_dir=self.download_dir)
         return raw_rundir_path
             
     def extract_run(self, raw_rundir_path):
+        """
+        Extracts a tar file (potentially compressed) in `self.download_dir`.
+
+        Args:
+            raw_rundir_path: `str`. Path to file to extract.
+ 
+        Returns:
+            `None`.
+        """
         srm_utils.extract(raw_rundir_path, where=self.download_dir)
 
     def run_bcl2fastq(self):
