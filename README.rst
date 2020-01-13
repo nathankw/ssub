@@ -1,4 +1,4 @@
-SampleSheets Subscriber - sssub
+SampleSheet Subscriber - sssub
 *******************************
 
 A downstream tool of smon_ that uses Pub/Sub notifications to initiate demultiplexing of an 
@@ -7,9 +7,9 @@ Illumina sequecing Run.
 Use case
 ========
 smon_ has done its job to persistantly store the raw sequencing runs in a Google Storage bucket.
-Now you need another tool that can automatially start demultiplexing. However, demultiplexing can't 
-start until you have a SampleSheet.  But once it's there, demultiplexing needs to start and the
-results need to be uploaded to Google Storage. 
+Now another tool is necessary that can automatially start demultiplexing. However, demultiplexing 
+generally mustn't begin until it has a SampleSheet. But once a SampleSheet is readily available, 
+demultiplexing needs to start and the results need to be uploaded to Google Storage. 
 
 How it works
 ============
@@ -18,19 +18,73 @@ events and triggers. At a high level, it works as follows:
 
   * User/application uploads a samplesheet to a dedicated bucket. The sample sheet naming convention 
     is ${RUN_NAME }.csv.
-  * Google Storage immediately fires off an event to a Pub/Sub topic (whenever there is a new file
-    or when an existing file is overwritten).
-  * sssub is running on a compute instance as a daemon process.  It is subscribed to that Pub/Sub 
-    topic. sssub polls the topic for new messages regularly, i.e. once a minute.
-  * When a new message is received, the script parses information about the event.
+  * Google Storage immediately fires off an event to a Pub/Sub topic (whenever there is a new SampleSheet
+    or when an existing one is overwritten).
+  * Meanwhile, sssub is running on a compute instance as a daemon process.  It is subscribed to that 
+    same Pub/Sub topic. sssub polls the topic for new messages regularly, i.e. once a minute.
+  * When sssub receives a new message, the script parses information about the event.
   * sssub will the query the Firestore collection - the same one used by smon_ - for a 
     document whose name is equal to the samplesheet name (minus the .csv part).
     sssub will then download both the samplesheet and the run tarball.  The samplesheet location
     is provided in the Pub/Sub message; the raw run tarball location is provided within the 
     Firestore document.
   * sssub will then kick off bcl2fastq. 
-  * sssub will finally upload the demultiplexing results to the same Google Storage bucket that
-    contains the raw sequencing run, and its storage location will be recorded in Firestore document.
+  * Demultiplexing results are output in a folder name 'demux' within the local run directory.
+  * sssub will upload the demux folder to the same Google Storage folder that
+    contains the raw sequencing run.
+  * sssub will update the relevant Firestore document to add the location to the demux folder in 
+    Google Storage.
+
+Resilience
+----------
+
+Reanalysis
+==========
+Reruns of the dmeultiplexing pipeline may be necessary for various reasons, i.e. the 
+demultiplexing results are no longer available and need to be regenerated, or there was a missing
+barcode in the SampleSheet, or there was an incorrect barcode in the SampleSheet ...
+
+Reanalysis is easily accomplished simply by re-uploading the SampleSheet, overwriting the previous one,
+to Google Storage. Google Storage will assign a generation number to the SampleSheet.  Think of the
+generation number as a type of versioning number that Google Storage assigns to each object each time
+that the object changes. Even re-uploading the same exact same file again produces a new generation
+number.
+
+Internally, sssub does all of it's processing (file downloads, analysis) within a local  folder
+named after the generation number of the SampleSheet. Thus, it's perfectly fine for a user to 
+upload an incorrect SampleSheet, and then to immediately afterwards upload the correct one. 
+In such a scenario, there will be two runs of the pipeline, and they won't interfere with each other. 
+You will notice, however, that there will be two sets of demultplexing results uploaded to Google 
+Storage, each of which exist within a folder named after the original generation number. 
+
+Scalablilty
+-----------
+While thare aren't any parallel steps in sssub, you can achieve scalability by launching two or more
+instances of sssub, either on a single, beefy compute instance, or on separate ones. While it's 
+certainly possible that two running instances of sssub will pull the same message from Pub/Sub, only
+one of these two processes will actually make use of it. It works as follows: 
+
+    #. Instance 1 of sssub receives a new message from Pub/Sub and immediately begings to process it.
+    #. Instances 1 downloads and parses the corresponding Firestore document that's related to the
+       SampleSheet detailed within the Pub/Sub message.
+    #. Instance 1 notices that the document doesn't have the `srm.FIRESTORE_ATTR_SS_PUBSUB_DATA` 
+       attribute set, so then sets it to the value of the JSON serialized of the PUb/Sub message
+       data.
+    #. Meanwhile, Instance 2 of sssub has also pulled down the same Pub/Sub message.
+    #. Instance 2 queries Firestore and downloads the corresponding document. 
+    #. Instance 2 notices that the document attribute `srm.FIRESTORE_ATTR_SS_PUBSUB_DATA` is already
+       set, so it downloades this JSON value.
+    #. Instance 2 then parses the generation number out of the JSON value it downloaded from
+       Firestore and notices that the generation number is the same as the generation number in the
+       Pub/Sub message that it is currently parsing. 
+    #. Instance 2 logs a message that it is deferring processing - leaving the rest of the work to
+       be fulfilled by Instance 1. 
+
+Let's now take a few steps back and pose the question - What if Instance 2 noticed that the generation
+numbers differ? Well, in this case, it will continue on to run the demultiplexing workflow since
+there are different versions of the SampleSheet at hand. 
+
+
 
 Setup
 -----
