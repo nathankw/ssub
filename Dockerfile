@@ -1,13 +1,20 @@
-FROM mirror.gcr.io/library/python 
+ROM nathankw/bcl2fastq2
 LABEL maintainer "Nathaniel Watson nathanielwatson@stanfordhealthcare.org"
 
-COPY . /sssub
+#INSTALL Python 3.8.1 along with scipy and numpy packages.
+RUN curl -O https://www.python.org/ftp/python/3.8.1/Python-3.8.1.tgz \
+	&& tar -zxf Python-3.8.1.tgz \
+	&& rm Python-3.8.1.tgz \
+	&& cd Python-3.8.1 \
+	&& ./configure \
+	&& make \
+	&& make install 
 
-RUN pip install --upgrade pip && pip install /sssub
+RUN alias python=python3
+RUN alias pip=pip3
 
-# Install bcl2fastq2 rpm for version 2.20.
-RUN curl -O https://support.illumina.com/content/dam/illumina-support/documents/downloads/software/bcl2fastq/bcl2fastq2-v2-20-0-linux-x86-64.zip && unzip bcl2fastq2-v2-20-0-linux-x86-64.zip && yum install -y bcl2fastq2-v2.20.0.422-Linux-x86_64.rpm && rm bcl2fastq2-v2-20-0-linux-x86-64.zip bcl2fastq2-v2.20.0.422-Linux-x86_64.rpm
-
-USER root
-
+RUN pip install --upgrade pip && pip install /sssub                                                    
+                                                                                                       
+USER root                                                                                              
+                                                                                                       
 ENTRYPOINT ["sssub"]

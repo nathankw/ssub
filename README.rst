@@ -138,7 +138,7 @@ The user-supplied configuration file is validated against a built-in schema.
 
 Installation
 ============
-This works in later versions of Python 3 only::
+In a later version of Python3, run::
 
   pip3 install sssub
 
