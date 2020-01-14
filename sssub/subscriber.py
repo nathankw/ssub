@@ -430,4 +430,11 @@ class Workflow:
         bucket_path = f"{self.run_name}/"
         logger.info(f"Uploading demultiplexing results for run {self.run_name}")
         gcstorage_utils.upload_folder(bucket=self.run_bucket, folder=path, bucket_path=bucket_path)
+        demux_object_path =  f"{bucket.name}/{bucket_path}/{os.path.basename(path))"
+        payload = {srm.FIRESTORE_DEMUX_PATH: demux_object_path)
+        logger.info(f"Updating Firestore document for {self.run_name} to set {srm.FIRESTORE_DEMUX_PATH} to {demux_object_path}")
+        self.firestore_doc.update(payload)
+        
 
+
+    def set_firestore_demux_path(self):

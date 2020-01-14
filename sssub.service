@@ -5,7 +5,7 @@ Documentation=https://pypi.org/project/sssub
 [Service]
 Type=simple
 ExecStartPre=/usr/bin/gcloud auth configure-docker
-ExecStart=/usr/bin/docker run --rm -w /mnt/disks/sssub -v /mnt/disks/sssub:/mnt/disks/sssub gcr.io/cgsdevelopment-1216/sssub@sha256:2a81136be97c7883e598af1a4a1e24dd5a058f7fa11df806bd0b1b309676dcbe  -c /mnt/disks/smon/sssub.conf
+ExecStart=/usr/bin/docker run --rm -w /mnt/disks/sssub -v /mnt/disks/sssub:/mnt/disks/sssub gcr.io/cgsdevelopment-1216/sssub:a451edd -c /mnt/disks/smon/sssub.conf
 [Install]
 WantedBy=multi-user.target
 
