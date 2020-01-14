@@ -1,4 +1,4 @@
-FROM gcr.io/cgsdevelopment-1216/docker-nathankw-bcl2fastq
+FROM gcr.io/cgsdevelopment-1216/docker-nathankw-bcl2fastq:ceb5c1a
 LABEL maintainer "Nathaniel Watson nathanielwatson@stanfordhealthcare.org"
 
 COPY . /sssub/
