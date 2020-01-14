@@ -1,4 +1,4 @@
-ROM nathankw/bcl2fastq2
+FROM nathankw/bcl2fastq2
 LABEL maintainer "Nathaniel Watson nathanielwatson@stanfordhealthcare.org"
 
 #INSTALL Python 3.8.1 along with scipy and numpy packages.
