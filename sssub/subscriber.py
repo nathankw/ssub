@@ -244,7 +244,14 @@ class Poll:
         # Query Firestore for the run metadata to grab the location in Google Storage of the raw run.
         # The below line raises a sruns_monitor.exceptions.FirestoreDocumentMissing` Exception if 
         # a Firestore Document doesn't exist with an ID of $run_name.
-        doc = self.firestore_coll.get(docid=run_name) # dict
+        try:
+            doc = self.firestore_coll.get(docid=run_name) # dict
+        except srm_exceptions.FirestoreDocumentMissing:
+            msg = f"No Firestore document found in collection {self.firestore_collection_name} for run name {run_name}"
+            msg += f"You'll need to address the reason why, and then re-upload the SampleSheet if processing is still necessary."
+            logger.critical(msg)
+            self.subscriber.acknowledge(self.subscription_path, ack_ids=[received_message.ack_id])
+            raise srm_exceptions.FirestoreDocumentMissing(msg)
         # Check if we have a previous sample sheet message that we stored in the Firestore
         # document.
         samplesheet_pubsub_data = doc.get(srm.FIRESTORE_ATTR_SS_PUBSUB_DATA)
@@ -270,7 +277,7 @@ class Poll:
         self.logger.info(msg)
         self.send_mail(subject=f"ssub: {run_name}", body=msg)
         # Download raw run and SampleSheet and demultiplex
-        wf = Workflow(conf_file=self.conf_file, run_name=run_name, demuxtest=self.demuxtest)
+        wf = Workflow(conf_file=self.conf_file, run_name=run_name, analysis_base_dir=self.analysis_base_dir, demuxtest=self.demuxtest)
         wf.run()
 
     def start(self):
