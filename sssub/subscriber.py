@@ -39,34 +39,41 @@ class FirestoreMissingPubSubMessage(Exception):
     isn't set.
     """
 
-def get_basedir():
-    """
-    Calculates the base directory in which all downstream actions take place, i.e. downloading and
-    analysis. The base directory is set as a fodler named sssub_demultiplexing that resided within
-    the calling directory.
-    """
-    basedir = os.path.join(os.getcwd(), "sssub_demultiplexing")
-    if not os.path.exists(basedir):
-        logger.info("Creating directory " + os.path.join(os.getcwd(), self.basedir))
-        os.makedirs(self.basedir)
-    return basedir
 
 class Poll:
-    "howdy"
+    """
+    Contains the logic for pulling down a message from the subscribed Pub/Sub topic, analayzing the message,
+    and initiating the demultiplexing workflow.  Contains a `start` instance method for running a polling loop
+    that iterates a configurable amount of seconds. 
 
-    def __init__(self, subscription_name, conf_file, gcp_project_id="", demuxtest=False):
+    Creates a sub directory that is by default named sssub_demultiplexing within the calling directory.  
+    This is known as the analysis base directory. All analyses take place nested within this directory. Folders within 
+    this directory that are older than a configurable amount of seconds are deleted.
+
+    This class doesn't make use of multitasking and therfore workflow runs are synchronous. If it is desired to be
+    able to process more than one message at a time, run another instance of this class with a different value
+    set for the `analysis_base_dir` parameter.
+    """
+
+    DEFAULT_ANALYSIS_DIR = "sssub_runs"
+
+    def __init__(self, subscription_name, conf_file, analysis_base_dir="", gcp_project_id="", demuxtest=False):
         """
-        Creates a sub directory named sssub_demultiplexing within the calling directory.
-
         Args:
             subscription_name: `str`. The name of the Pub/Sub subscription.
             conf_file: `str`. Path to the JSON configurationn file. 
+            analysis_base_dir: `str`. The local directory path in which all analysis will take place. If not specified,
+                it will default to a subdirectory within the calling directory whose name is equal to `Poll.DEFAULT_ANALYSIS_DIR`.
+                Will be created if it does not exist.
             gcp_project_id: `str`. The ID of the GCP project in which the subscription identified by
                 the 'subscription_name` parameter was created. If left blank, it will be extracted from
                 the standard environment variable GCP_PROJECT.
             demuxtest: `bool`. True means to demultiplex only a single tile (s_1_1101) - handy when developing/testing. 
         """
         self.logger = self._set_logger()
+        #: Path to the base directory in which all further actions take place, i.e. downloads, 
+        #: and running bcl2fastq. Will be created if the path does not yet exist.
+        self.analysis_base_dir = self._get_analysis_basedir(analysis_base_dir)
         self.demuxtest = demuxtest
         self.subscription_name = subscription_name
         self.conf_file = conf_file
@@ -82,10 +89,7 @@ class Poll:
                 msg = "You must set the GCP_PROJECT environment variable when the 'gcp_project_id' argument is not set."
                 self.logger.critical(msg)
                 sys.exit(-1)
-        #: Path to the base directory in which all further actions take place, i.e. downloads, 
-        #: and running bcl2fastq. Will be created if the path does not yet exist.
-        self.basedir = get_basedir()
-        #: When an analysis directory in the directory specified by `self.basedir` is older than
+        #: When an analysis directory in the directory specified by `self.analysis_base_dir` is older than
         #: this many seconds, remove it.
         #: If not specified in configuration file, defaults to 604800 (1 week).
         self.sweep_age_sec = self.conf.get(srm.C_SWEEP_AGE_SEC, 604800)
@@ -95,15 +99,40 @@ class Poll:
         self.firestore_collection_name = self.conf[srm.C_FIRESTORE_COLLECTION]
         self.firestore_coll = FirestoreCollection(self.firestore_collection_name)
 
+    def _get_analysis_basedir(self, analysis_base_dir):
+        """
+        Calculates the top-level base directory in which all downstream actions take place, i.e. downloading and
+        analysis. 
+
+        Args:
+            analysis_base_dir: `str`. The local directory path in which all analysis will take place. If not specified,
+                it will default to a subdirectory within the calling directory whose name is equal to `Poll.DEFAULT_ANALYSIS_DIR`.
+                Will be created if it does not exist.
+        """
+        if not analysis_base_dir:
+            analysis_base_dir = os.path.join(os.getcwd(), Poll.DEFAULT_ANALYSIS_DIR)
+        else:
+            # Make sure that analysis_base_dir ends with a subdirectory named `Poll.DEFAULT_ANALYSIS_DIR`.
+            # This ensures that, when cleaning up old directories, only directories generated by or a part of this
+            # program will be removed (the `start` instance method makes a call to `srm_utils.clean_completed_runs()`
+            # in each cycle.
+            basename = os.path.basename(analysis_base_dir)
+            if not basename == Poll.DEFAULT_ANALYSIS_DIR:
+                analysis_base_dir = os.path.join(analysis_base_dir, "sssub_runs")
+        if not os.path.exists(analysis_base_dir):
+            logger.info("Creating directory " + analysis_base_dir)
+            os.makedirs(analysis_base_dir)
+        return analysis_base_dir
+
     def _set_logger(self):
         """
         Adds two file handlers to the logger: one that accepts debug-level messages and another that
         accepts error-level messages.
         """
         # Add debug file handler to the logger:
-        logging_utils.add_file_handler(logger=logger, log_dir=srm.LOG_DIR, level=logging.DEBUG, tag="debug")
+        logging_utils.add_file_handler(logger=logger, log_dir=sssub.LOG_DIR, level=logging.DEBUG, tag="debug")
         # Add error file handler to the logger:
-        logging_utils.add_file_handler(logger=logger, log_dir=srm.LOG_DIR, level=logging.ERROR, tag="error")
+        logging_utils.add_file_handler(logger=logger, log_dir=sssub.LOG_DIR, level=logging.ERROR, tag="error")
         return logger
 
     def get_mail_params(self):
@@ -183,6 +212,8 @@ class Poll:
 
     def pull(self):
         """
+        Polls the Pub/Sub topic for at most 1 message.
+
         Returns:
             `list` of 0 or 1 `google.cloud.pubsub_v1.types.ReceivedMessage` instance.
         """
@@ -249,7 +280,7 @@ class Poll:
                 received_message = self.pull()
                 if received_message:
                     self.process_message(received_message)
-                deleted_dirs = srm_utils.clean_completed_runs(basedir=self.basedir, limit=self.sweep_age_sec)
+                deleted_dirs = srm_utils.clean_completed_runs(basedir=self.analysis_base_dir, limit=self.sweep_age_sec)
                 if deleted_dirs:
                     for d_path in deleted_dirs:
                         self.logger.info("Deleted directory {}".format(d_path))
@@ -268,7 +299,7 @@ class Workflow:
     Runs the demultiplexing workflow. 
     """
 
-    def __init__(self, conf_file, run_name, demuxtest=False):
+    def __init__(self, conf_file, run_name, analysis_base_dir,  demuxtest=False):
         """
         Args:
             conf_file: `str`. Path to the JSON configurationn file. 
@@ -281,10 +312,11 @@ class Workflow:
         self.demuxtest = demuxtest
         #: Path to the base directory in which all further actions take place, i.e. downloads, 
         #: and running bcl2fastq. Will be created if the path does not yet exist.
-        self.basedir = get_basedir()
+        self.analysis_base_dir = analysis_base_dir
         self.firestore_collection_name = self.conf[srm.C_FIRESTORE_COLLECTION]
         self.firestore_coll = FirestoreCollection(self.firestore_collection_name)
-        self.firestore_doc = self.firestore_coll.get(run_name)
+        #: `dict` containing the Firestore document for the provided run_name argument.
+        self.firestore_doc = self.firestore_coll.get(run_name) 
         self.psmsg = self.firestore_doc.get(srm.FIRESTORE_ATTR_SS_PUBSUB_DATA)
         if not self.psmsg:
             msg = f"Firestore document ID '{run_name}' does not have a value set for attribute '{srm.FIRESTORE_ATTR_SS_PUBSUB_DATA}'."
@@ -342,7 +374,7 @@ class Workflow:
         Figures out what directory to use for downloading the SampelSheet and sequencing run (tarball).
         The download directory path is calculated as the concatenation of the following components:
 
-            #. `self.basedir` followed by
+            #. `self.analysis_base_basedir` followed by
             #. a directory named after the sequecing run, followed by
             #. a directory named after the SampeSheet files generation number (see note below).
  
@@ -351,7 +383,7 @@ class Workflow:
         For example, each time the SampleSheet file is updated, a new generation number is created
         to identify this verion of the file. 
         """
-        return os.path.join(self.basedir, self.run_name, self.psmsg["generation"])
+        return os.path.join(self.analysis_base_dir, self.run_name, self.psmsg["generation"])
 
     def download_samplesheet(self):
         """
@@ -427,14 +459,10 @@ class Workflow:
         Args:
             path: `str`. The path to the folder that contains the demultiplexing results.
         """
-        bucket_path = f"{self.run_name}/"
+        bucket_path = f"{self.run_name}"
         logger.info(f"Uploading demultiplexing results for run {self.run_name}")
         gcstorage_utils.upload_folder(bucket=self.run_bucket, folder=path, bucket_path=bucket_path)
-        demux_object_path =  f"{bucket.name}/{bucket_path}/{os.path.basename(path))"
+        demux_object_path =  f"{self.run_bucket.name}/{bucket_path}/{os.path.basename(path)}"
         payload = {srm.FIRESTORE_DEMUX_PATH: demux_object_path}
         logger.info(f"Updating Firestore document for {self.run_name} to set {srm.FIRESTORE_DEMUX_PATH} to {demux_object_path}")
-        self.firestore_doc.update(payload)
-        
-
-
-    def set_firestore_demux_path(self):
+        self.firestore_coll.update(docid=self.run_name, payload=payload)

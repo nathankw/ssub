@@ -83,6 +83,9 @@ there are different versions of the SampleSheet at hand. It will also, however, 
 Firestore document's `sssub.FIRESTORE_ATTR_SS_PUBSUB_DATA` attribute to the JSON serialization of the
 Pub/Sub message data that it's working on. 
 
+Note: If using more than one deployment of sssub on the same instance, it is recommended to run each in a
+separate working directory.  
+
 
 Setup
 -----
