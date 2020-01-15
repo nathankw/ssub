@@ -276,9 +276,17 @@ class Poll:
         msg = f"Processing SampleSheet for run name {run_name}"
         self.logger.info(msg)
         self.send_mail(subject=f"ssub: {run_name}", body=msg)
-        # Download raw run and SampleSheet and demultiplex
+        # Run demux workflow
+        self.run_demux_workflow(run_name)
+
+    def run_demux_workflow(self, run_name):
         wf = Workflow(conf_file=self.conf_file, run_name=run_name, analysis_base_dir=self.analysis_base_dir, demuxtest=self.demuxtest)
-        wf.run()
+        gs_demux_path = wf.run()
+        subject = f"Demux complete for {run_name}"
+        body = "Results in Google Storage at object path {gs_demux_path}."
+        body += "Consult the Firestore document {run_name} in collection {self.firestore_collection_name} for more details."
+        self.logger.info(msg)
+        self.send_mail(subject=subject, body=body)
 
     def start(self):
         interval = self.conf.get(srm.C_CYCLE_PAUSE_SEC, 60)
@@ -465,6 +473,10 @@ class Workflow:
 
         Args:
             path: `str`. The path to the folder that contains the demultiplexing results.
+
+        Returns:
+            `str`. The bucket name and object path to the demux folder in Google Storage.
+                For example, "cgs-dev-sequencer-dropin/190625_A00731_0011_AHHTFVDMXX/demux".
         """
         bucket_path = f"{self.run_name}"
         logger.info(f"Uploading demultiplexing results for run {self.run_name}")
@@ -473,3 +485,4 @@ class Workflow:
         payload = {srm.FIRESTORE_DEMUX_PATH: demux_object_path}
         logger.info(f"Updating Firestore document for {self.run_name} to set {srm.FIRESTORE_DEMUX_PATH} to {demux_object_path}")
         self.firestore_coll.update(docid=self.run_name, payload=payload)
+        return demux_object_path
