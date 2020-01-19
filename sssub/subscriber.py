@@ -285,7 +285,7 @@ class Poll:
         subject = f"Demux complete for {run_name}"
         body = "Results in Google Storage at object path {gs_demux_path}."
         body += "Consult the Firestore document {run_name} in collection {self.firestore_collection_name} for more details."
-        self.logger.info(msg)
+        self.logger.info(body)
         self.send_mail(subject=subject, body=body)
 
     def start(self):
@@ -450,7 +450,7 @@ class Workflow:
         rundir = self.get_local_rundir_path()
         samplesheet_path = self.get_local_samplesheet_path()
         logger.info(f"Starting bcl2fastq for run {rundir} and SampleSheet {samplesheet_path}.")
-        outdir = os.path.join(rundir, "demux")
+        outdir = os.path.join(rundir, "demux2")
         cmd = "bcl2fastq"
         if self.demuxtest:
             cmd += " --tiles s_1_1101"
