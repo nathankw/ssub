@@ -275,7 +275,7 @@ class Poll:
         self.subscriber.acknowledge(self.subscription_path, ack_ids=[received_message.ack_id])
         msg = f"Processing SampleSheet for run name {run_name}"
         self.logger.info(msg)
-        self.send_mail(subject=f"ssub: {run_name}", body=msg)
+        self.send_mail(subject=f"{run_name}", body=msg)
         # Run demux workflow
         self.run_demux_workflow(run_name)
 
