@@ -450,7 +450,7 @@ class Workflow:
         rundir = self.get_local_rundir_path()
         samplesheet_path = self.get_local_samplesheet_path()
         logger.info(f"Starting bcl2fastq for run {rundir} and SampleSheet {samplesheet_path}.")
-        outdir = os.path.join(rundir, "demux2")
+        outdir = os.path.join(rundir, "demux")
         cmd = "bcl2fastq"
         if self.demuxtest:
             cmd += " --tiles s_1_1101"
