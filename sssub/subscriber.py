@@ -283,8 +283,8 @@ class Poll:
         wf = Workflow(conf_file=self.conf_file, run_name=run_name, analysis_base_dir=self.analysis_base_dir, demuxtest=self.demuxtest)
         gs_demux_path = wf.run()
         subject = f"Demux complete for {run_name}"
-        body = "Results in Google Storage at object path {gs_demux_path}."
-        body += "Consult the Firestore document {run_name} in collection {self.firestore_collection_name} for more details."
+        body = f"Results in Google Storage at object path {gs_demux_path}."
+        body += f"Consult the Firestore document {run_name} in collection {self.firestore_collection_name} for more details."
         self.logger.info(body)
         self.send_mail(subject=subject, body=body)
 
