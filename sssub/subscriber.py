@@ -450,7 +450,7 @@ class Workflow:
         rundir = self.get_local_rundir_path()
         samplesheet_path = self.get_local_samplesheet_path()
         logger.info(f"Starting bcl2fastq for run {rundir} and SampleSheet {samplesheet_path}.")
-        outdir = os.path.join(rundir, "demux")
+        outdir = os.path.join(rundir, sssub.DEMUX_FOLDER_NAME)
         cmd = "bcl2fastq"
         if self.demuxtest:
             cmd += " --tiles s_1_1101"
@@ -471,14 +471,14 @@ class Workflow:
         is BOB and the demultiplexing folder is at /path/to/BOB/demux, and the bucket is
         named myruns, then the folder will be uploaded to gs://myruns/BOB/demux.
 
-        Note that the SampleSheet will also be uploaded to gs://myruns/BOB/demux/SampleSheet.csv.
+        Note that the SampleSheet will also be uploaded to gs://myruns/BOB/{sssub.DEMUX_FOLDER_NAME}/SampleSheet.csv.
 
         Args:
             path: `str`. The path to the folder that contains the demultiplexing results.
 
         Returns:
             `str`. The bucket name and object path to the demux folder in Google Storage.
-                For example, "cgs-dev-sequencer-dropin/190625_A00731_0011_AHHTFVDMXX/demux".
+                For example, "cgs-dev-sequencer-dropin/190625_A00731_0011_AHHTFVDMXX/{sssub.DEMUX_FOLDER_NAME}".
         """
         bucket_path = f"{self.run_name}"
         logger.info(f"Uploading demultiplexing results for run {self.run_name}")
@@ -489,5 +489,5 @@ class Workflow:
         logger.info(f"Updating Firestore document for {self.run_name} to set {srm.FIRESTORE_DEMUX_PATH} to {demux_object_path}")
         self.firestore_coll.update(docid=self.run_name, payload=payload)
         # Upload SampleSheet
-        gcstorage_utils.upload_file(bucket=self.run_bucket, filepath=self.get_local_samplesheet_path(), object_path=f"{bucket_path}/SampleSheet.csv")
+        gcstorage_utils.upload_file(bucket=self.run_bucket, filepath=self.get_local_samplesheet_path(), object_path=f"{bucket_path}/{sssub.DEMUX_FOLDER_NAME}/SampleSheet.csv")
         return demux_object_path
