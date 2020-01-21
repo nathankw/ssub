@@ -471,6 +471,8 @@ class Workflow:
         is BOB and the demultiplexing folder is at /path/to/BOB/demux, and the bucket is
         named myruns, then the folder will be uploaded to gs://myruns/BOB/demux.
 
+        Note that the SampleSheet will also be uploaded to gs://myruns/BOB/demux/SampleSheet.csv.
+
         Args:
             path: `str`. The path to the folder that contains the demultiplexing results.
 
@@ -480,9 +482,12 @@ class Workflow:
         """
         bucket_path = f"{self.run_name}"
         logger.info(f"Uploading demultiplexing results for run {self.run_name}")
+        # Upload demux folder
         gcstorage_utils.upload_folder(bucket=self.run_bucket, folder=path, bucket_path=bucket_path)
         demux_object_path =  f"{self.run_bucket.name}/{bucket_path}/{os.path.basename(path)}"
         payload = {srm.FIRESTORE_DEMUX_PATH: demux_object_path}
         logger.info(f"Updating Firestore document for {self.run_name} to set {srm.FIRESTORE_DEMUX_PATH} to {demux_object_path}")
         self.firestore_coll.update(docid=self.run_name, payload=payload)
+        # Upload SampleSheet
+        gcstorage_utils.upload_file(bucket=self.run_bucket, filepath=self.get_local_samplesheet_path(), object_path=f"{bucket_path}/SampleSheet.csv")
         return demux_object_path
