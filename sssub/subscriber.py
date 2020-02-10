@@ -391,7 +391,7 @@ class Workflow:
 
             #. `self.analysis_base_basedir` followed by
             #. a directory named after the sequecing run, followed by
-            #. a directory named after the SampeSheet files generation number (see note below).
+            #. a directory named after the SampeSheet file's generation number (see note below).
  
         The generation number identifies the version of a particular file in Google Strorage.
         It has the form of a long, random number, even though it is not random. 

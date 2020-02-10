@@ -35,6 +35,9 @@ events and triggers. At a high level, it works as follows:
   #. sssub will update the relevant Firestore document to add the location to the demux folder in 
      Google Storage.
 
+All processing happens within a sub-directory of the calling directory that is named
+sssub_runs. 
+
 Reanalysis
 ==========
 Reruns of the dmeultiplexing pipeline may be necessary for various reasons, i.e. the 
@@ -47,8 +50,8 @@ generation number as a type of versioning number that Google Storage assigns to 
 that the object changes. Even re-uploading the same exact same file again produces a new generation
 number.
 
-Internally, sssub does all of it's processing (file downloads, analysis) within a local  folder
-named after the generation number of the SampleSheet. Thus, it's perfectly fine for a user to 
+Internally, sssub does all of it's processing (file downloads, analysis) within a local directory
+path named after the run and the generation number of the SampleSheet. Thus, it's perfectly fine for a user to 
 upload an incorrect SampleSheet, and then to immediately afterwards upload the correct one. 
 In such a scenario, there will be two runs of the pipeline, and they won't interfere with each other. 
 You will notice, however, that there will be two sets of demultplexing results uploaded to Google 
@@ -107,9 +110,9 @@ Setup
 
      gcloud beta pubsub subscriptions create --topic samplesheets sssub
 
-#. Locate the Cloud Storage service account and grant it the IAM role pubsub.publisher
+#. Locate the Cloud Storage service account and grant it the IAM role pubsub.publisher.
    By default, a bucket doesn't have the priviledge to send notifications to Pub/Sub. Follow the 
-   instructions in steps 5 and 6 `at <https://cloud.google.com/storage/docs/reporting-changes>`_.
+   instructions in steps 5 and 6 in this `GCP documentation  <https://cloud.google.com/storage/docs/reporting-changes>`_.
 
 
 Mail notifications
@@ -130,12 +133,12 @@ collection to use, for example. The possible keys are:
 
   * `name`: The client name of the subscriber. The name will appear in the subject line if email 
     notification is configured, as well as in other places, i.e. log messages.
-  * `cycle_pause_sec`: The number of seconds to wait in-between scans of `watchdir`. Defaults to 60.
+  * `cycle_pause_sec`: The number of seconds to wait in-between polls of the Pub/Sub topic. Defaults to 60.
   * `firestore_collection`: The name of the Google Firestore collection to use for
     persistent workflow state that downstream tools can query. If it doesn't exist yet, it will be
     created. If this parameter is not provided, support for Firestore is turned off. 
-  * `sweep_age_sec`: When a run in the completed runs directory is older than this many seconds, 
-    remove it. Defaults to 604800 (1 week).
+  * `sweep_age_sec`: When an analysis directory (within the sssub_runs directory)
+     is older than this many seconds, remove it. Defaults to 604800 (1 week).
 
 The user-supplied configuration file is validated against a built-in schema. 
 
