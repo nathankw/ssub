@@ -20,7 +20,7 @@ from setuptools import setup, find_packages
 with open("README.rst", "r") as fh:
     long_description = fh.read()
 
-SCRIPTS_DIR = os.path.join("sssub", "scripts")
+SCRIPTS_DIR = os.path.join("ssub", "scripts")
 scripts = glob.glob(os.path.join(SCRIPTS_DIR,"*.py"))
 scripts.remove(os.path.join(SCRIPTS_DIR,"__init__.py"))
 #scripts.append("sruns_monitor/tests/monitor_integration_tests.py")
@@ -36,7 +36,7 @@ setup(
   description = "Polls a GCP Pub/Sub topic for new SampleSheet notification messages in order to initiate bcl2fastq.",
   entry_points = {
       "console_scripts": [
-          "sssub=sssub.scripts.launch_sssub:main"
+          "ssub=ssub.scripts.launch_ssub:main"
       ]
   },
   keywords = "bcl2fastq sequencing samplesheet monitor",
@@ -45,15 +45,15 @@ setup(
   ],
   long_description = long_description,
   long_description_content_type = "text/x-rst",
-  name = "sssub",
+  name = "ssub",
   packages = find_packages(),
   package_data = {
-      "sssub": ["schema.json"],
+      "ssub": ["schema.json"],
   },
   project_urls = {
-      "Read the Docs": "https://sssub.readthedocs.io/en/latest"
+      "Read the Docs": "https://ssub.readthedocs.io/en/latest"
   },
   scripts = scripts,
-  url = "https://pypi.org/project/sssub/",
+  url = "https://pypi.org/project/ssub/",
   version = "0.1.2"
 )

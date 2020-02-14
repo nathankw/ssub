@@ -1,7 +1,7 @@
-sssub\.subscriber
+ssub\.subscriber
 -----------------
 
-.. automodule:: sssub.subscriber
+.. automodule:: ssub.subscriber
    :members:
    :private-members:
    :show-inheritance:

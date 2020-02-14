@@ -1,0 +1,11 @@
+[Unit]
+Description=SampleSheet Subscriber
+Documentation=https://pypi.org/project/ssub
+
+[Service]
+Type=simple
+ExecStartPre=/usr/bin/gcloud auth configure-docker
+ExecStart=/usr/bin/docker run --rm -w /mnt/disks/ssub -v /mnt/disks/ssub:/mnt/disks/ssub gcr.io/cgsdevelopment-1216/ssub:a451edd -c /mnt/disks/ssub/ssub.conf
+[Install]
+WantedBy=multi-user.target
+

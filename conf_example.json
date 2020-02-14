@@ -6,7 +6,7 @@
             "nathanielwatson@stanfordhealthcare.org"
         ]
     },
-    "name": "sssub",
+    "name": "ssub",
     "firestore_collection": "sruns",
     "cycle_pause_sec": 30
 }

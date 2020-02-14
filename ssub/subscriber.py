@@ -15,7 +15,7 @@ from sruns_monitor import logging_utils
 from sruns_monitor  import gcstorage_utils
 from sruns_monitor import utils as srm_utils
 
-import sssub
+import ssub
 
 from google.cloud import pubsub_v1
 import google.api_core.exceptions
@@ -46,7 +46,7 @@ class Poll:
     and initiating the demultiplexing workflow.  Contains a `start` instance method for running a polling loop
     that iterates a configurable amount of seconds. 
 
-    Creates a sub directory that is by default named sssub_demultiplexing within the calling directory.  
+    Creates a sub directory that is by default named ssub_demultiplexing within the calling directory.  
     This is known as the analysis base directory. All analyses take place nested within this directory. Folders within 
     this directory that are older than a configurable amount of seconds are deleted.
 
@@ -55,7 +55,7 @@ class Poll:
     set for the `analysis_base_dir` parameter.
     """
 
-    DEFAULT_ANALYSIS_DIR = "sssub_runs"
+    DEFAULT_ANALYSIS_DIR = "ssub_runs"
 
     def __init__(self, subscription_name, conf_file, analysis_base_dir="", gcp_project_id="", demuxtest=False):
         """
@@ -77,7 +77,7 @@ class Poll:
         self.demuxtest = demuxtest
         self.subscription_name = subscription_name
         self.conf_file = conf_file
-        self.conf = srm_utils.validate_conf(conf_file, schema_file=sssub.CONF_SCHEMA)
+        self.conf = srm_utils.validate_conf(conf_file, schema_file=ssub.CONF_SCHEMA)
         #: The name of the subscriber client. The name will appear in the subject line if email notification
         #: is configured, as well as in other places, i.e. log messages.
         self.client_name = self.conf[srm.C_MONITOR_NAME]
@@ -118,7 +118,7 @@ class Poll:
             # in each cycle.
             basename = os.path.basename(analysis_base_dir)
             if not basename == Poll.DEFAULT_ANALYSIS_DIR:
-                analysis_base_dir = os.path.join(analysis_base_dir, "sssub_runs")
+                analysis_base_dir = os.path.join(analysis_base_dir, "ssub_runs")
         if not os.path.exists(analysis_base_dir):
             logger.info("Creating directory " + analysis_base_dir)
             os.makedirs(analysis_base_dir)
@@ -130,9 +130,9 @@ class Poll:
         accepts error-level messages.
         """
         # Add debug file handler to the logger:
-        logging_utils.add_file_handler(logger=logger, log_dir=sssub.LOG_DIR, level=logging.DEBUG, tag="debug")
+        logging_utils.add_file_handler(logger=logger, log_dir=ssub.LOG_DIR, level=logging.DEBUG, tag="debug")
         # Add error file handler to the logger:
-        logging_utils.add_file_handler(logger=logger, log_dir=sssub.LOG_DIR, level=logging.ERROR, tag="error")
+        logging_utils.add_file_handler(logger=logger, log_dir=ssub.LOG_DIR, level=logging.ERROR, tag="error")
         return logger
 
     def get_mail_params(self):
@@ -322,7 +322,7 @@ class Workflow:
             demuxtest: `bool`. True means to demultiplex only a single tile (s_1_1101) - handy when developing/testing.
         """
         self.conf_file = conf_file
-        self.conf = srm_utils.validate_conf(conf_file, schema_file=sssub.CONF_SCHEMA)
+        self.conf = srm_utils.validate_conf(conf_file, schema_file=ssub.CONF_SCHEMA)
         self.run_name = run_name
         self.demuxtest = demuxtest
         #: Path to the base directory in which all further actions take place, i.e. downloads, 
@@ -450,7 +450,7 @@ class Workflow:
         rundir = self.get_local_rundir_path()
         samplesheet_path = self.get_local_samplesheet_path()
         logger.info(f"Starting bcl2fastq for run {rundir} and SampleSheet {samplesheet_path}.")
-        outdir = os.path.join(rundir, sssub.DEMUX_FOLDER_NAME)
+        outdir = os.path.join(rundir, ssub.DEMUX_FOLDER_NAME)
         cmd = "bcl2fastq"
         if self.demuxtest:
             cmd += " --tiles s_1_1101"
@@ -471,14 +471,14 @@ class Workflow:
         is BOB and the demultiplexing folder is at /path/to/BOB/demux, and the bucket is
         named myruns, then the folder will be uploaded to gs://myruns/BOB/demux.
 
-        Note that the SampleSheet will also be uploaded to gs://myruns/BOB/{sssub.DEMUX_FOLDER_NAME}/SampleSheet.csv.
+        Note that the SampleSheet will also be uploaded to gs://myruns/BOB/{ssub.DEMUX_FOLDER_NAME}/SampleSheet.csv.
 
         Args:
             path: `str`. The path to the folder that contains the demultiplexing results.
 
         Returns:
             `str`. The bucket name and object path to the demux folder in Google Storage.
-                For example, "cgs-dev-sequencer-dropin/190625_A00731_0011_AHHTFVDMXX/{sssub.DEMUX_FOLDER_NAME}".
+                For example, "cgs-dev-sequencer-dropin/190625_A00731_0011_AHHTFVDMXX/{ssub.DEMUX_FOLDER_NAME}".
         """
         bucket_path = f"{self.run_name}"
         logger.info(f"Uploading demultiplexing results for run {self.run_name}")
@@ -489,5 +489,5 @@ class Workflow:
         logger.info(f"Updating Firestore document for {self.run_name} to set {srm.FIRESTORE_DEMUX_PATH} to {demux_object_path}")
         self.firestore_coll.update(docid=self.run_name, payload=payload)
         # Upload SampleSheet
-        gcstorage_utils.upload_file(bucket=self.run_bucket, filepath=self.get_local_samplesheet_path(), object_path=f"{bucket_path}/{sssub.DEMUX_FOLDER_NAME}/SampleSheet.csv")
+        gcstorage_utils.upload_file(bucket=self.run_bucket, filepath=self.get_local_samplesheet_path(), object_path=f"{bucket_path}/{ssub.DEMUX_FOLDER_NAME}/SampleSheet.csv")
         return demux_object_path

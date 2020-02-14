@@ -1,4 +1,4 @@
-SampleSheet Subscriber - sssub
+SampleSheet Subscriber - ssub
 *******************************
 
 A downstream tool of smon_ that uses Pub/Sub notifications to initiate demultiplexing of an 
@@ -13,30 +13,30 @@ demultiplexing needs to start and the results need to be uploaded to Google Stor
 
 How it works
 ============
-SampleSheets Subscriber (sssub) solves the aforementioned challenges by utilizing the power of GCP
+SampleSheets Subscriber (ssub) solves the aforementioned challenges by utilizing the power of GCP
 events and triggers. At a high level, it works as follows:
 
   #. User/application uploads a samplesheet to a dedicated bucket. The sample sheet naming convention 
      is ${RUN_NAME }.csv.
   #. Google Storage immediately fires off an event to a Pub/Sub topic (whenever there is a new SampleSheet
      or when an existing one is overwritten).
-  #. Meanwhile, sssub is running on a compute instance as a daemon process.  It is subscribed to that 
-     same Pub/Sub topic. sssub polls the topic for new messages regularly, i.e. once a minute.
-  #. When sssub receives a new message, the script parses information about the event.
-  #. sssub will the query the Firestore collection - the same one used by smon_ - for a 
+  #. Meanwhile, ssub is running on a compute instance as a daemon process.  It is subscribed to that 
+     same Pub/Sub topic. ssub polls the topic for new messages regularly, i.e. once a minute.
+  #. When ssub receives a new message, the script parses information about the event.
+  #. ssub will the query the Firestore collection - the same one used by smon_ - for a 
      document whose name is equal to the samplesheet name (minus the .csv part).
-     sssub will then download both the samplesheet and the run tarball.  The samplesheet location
+     ssub will then download both the samplesheet and the run tarball.  The samplesheet location
      is provided in the Pub/Sub message; the raw run tarball location is provided within the 
      Firestore document.
-  #. sssub will then kick off bcl2fastq. 
+  #. ssub will then kick off bcl2fastq. 
   #. Demultiplexing results are output in a folder name 'demux' within the local run directory.
-  #. sssub will upload the demux folder to the same Google Storage folder that
+  #. ssub will upload the demux folder to the same Google Storage folder that
      contains the raw sequencing run.
-  #. sssub will update the relevant Firestore document to add the location to the demux folder in 
+  #. ssub will update the relevant Firestore document to add the location to the demux folder in 
      Google Storage.
 
 All processing happens within a sub-directory of the calling directory that is named
-sssub_runs. 
+ssub_runs. 
 
 Reanalysis
 ==========
@@ -50,7 +50,7 @@ generation number as a type of versioning number that Google Storage assigns to 
 that the object changes. Even re-uploading the same exact same file again produces a new generation
 number.
 
-Internally, sssub does all of it's processing (file downloads, analysis) within a local directory
+Internally, ssub does all of it's processing (file downloads, analysis) within a local directory
 path named after the run and the generation number of the SampleSheet. Thus, it's perfectly fine for a user to 
 upload an incorrect SampleSheet, and then to immediately afterwards upload the correct one. 
 In such a scenario, there will be two runs of the pipeline, and they won't interfere with each other. 
@@ -59,20 +59,20 @@ Storage, each of which exist within a folder named after the original generation
 
 Scalablilty
 -----------
-While thare aren't any parallel steps in sssub, you can achieve scalability by launching two or more
-instances of sssub, either on one single, beefy compute instance, or on separate ones. While it's 
-certainly possible that two running instances of sssub can pull the same message from Pub/Sub, only
+While thare aren't any parallel steps in ssub, you can achieve scalability by launching two or more
+instances of ssub, either on one single, beefy compute instance, or on separate ones. While it's 
+certainly possible that two running instances of ssub can pull the same message from Pub/Sub, only
 one of these two insances will actually make use of it. It works as follows: 
 
-    #. Instance 1 of sssub receives a new message from Pub/Sub and immediately begings to process it.
+    #. Instance 1 of ssub receives a new message from Pub/Sub and immediately begings to process it.
     #. Instances 1 downloads and parses the corresponding Firestore document that's related to the
        SampleSheet detailed within the Pub/Sub message.
-    #. Instance 1 notices that the document doesn't have the `sssub.FIRESTORE_ATTR_SS_PUBSUB_DATA` 
+    #. Instance 1 notices that the document doesn't have the `ssub.FIRESTORE_ATTR_SS_PUBSUB_DATA` 
        attribute set, so then sets it to the value of the JSON serialized of the PUb/Sub message
        data.
-    #. Meanwhile, Instance 2 of sssub has also pulled down the same Pub/Sub message.
+    #. Meanwhile, Instance 2 of ssub has also pulled down the same Pub/Sub message.
     #. Instance 2 queries Firestore and downloads the corresponding document. 
-    #. Instance 2 notices that the document attribute `sssub.FIRESTORE_ATTR_SS_PUBSUB_DATA` is already
+    #. Instance 2 notices that the document attribute `ssub.FIRESTORE_ATTR_SS_PUBSUB_DATA` is already
        set, so it downloades this JSON value.
     #. Instance 2 then parses the generation number out of the JSON value it downloaded from
        Firestore and notices that the generation number is the same as the generation number in the
@@ -83,10 +83,10 @@ one of these two insances will actually make use of it. It works as follows:
 Let's now take a few steps back and pose the question - What if Instance 2 noticed that the generation
 numbers differ? Well, in this case, it will continue on to run the demultiplexing workflow since
 there are different versions of the SampleSheet at hand. It will also, however, first set the 
-Firestore document's `sssub.FIRESTORE_ATTR_SS_PUBSUB_DATA` attribute to the JSON serialization of the
+Firestore document's `ssub.FIRESTORE_ATTR_SS_PUBSUB_DATA` attribute to the JSON serialization of the
 Pub/Sub message data that it's working on. 
 
-Note: If using more than one deployment of sssub on the same instance, it is recommended to run each in a
+Note: If using more than one deployment of ssub on the same instance, it is recommended to run each in a
 separate working directory.  
 
 
@@ -108,7 +108,7 @@ Setup
 
 #. Create a Pub/Sub subscription. For example::
 
-     gcloud beta pubsub subscriptions create --topic samplesheets sssub
+     gcloud beta pubsub subscriptions create --topic samplesheets ssub
 
 #. Locate the Cloud Storage service account and grant it the IAM role pubsub.publisher.
    By default, a bucket doesn't have the priviledge to send notifications to Pub/Sub. Follow the 
@@ -124,7 +124,7 @@ receive email notifications under the folowing events:
   * A new Pub/Sub message is being processed (duplicates excluded). 
 
 You can use the script `send_test_email.py` to test that the mail configuration you provide is
-working. If it is, you should receive an email with the subject "sssub test email". 
+working. If it is, you should receive an email with the subject "ssub test email". 
 
 The configuration file
 ======================
@@ -137,7 +137,7 @@ collection to use, for example. The possible keys are:
   * `firestore_collection`: The name of the Google Firestore collection to use for
     persistent workflow state that downstream tools can query. If it doesn't exist yet, it will be
     created. If this parameter is not provided, support for Firestore is turned off. 
-  * `sweep_age_sec`: When an analysis directory (within the sssub_runs directory)
+  * `sweep_age_sec`: When an analysis directory (within the ssub_runs directory)
      is older than this many seconds, remove it. Defaults to 604800 (1 week).
 
 The user-supplied configuration file is validated against a built-in schema. 
@@ -146,7 +146,7 @@ Installation
 ============
 In a later version of Python3, run::
 
-  pip3 install sssub
+  pip3 install ssub
 
 It is recommended to start your compute instance (that will run the monitor) using a service account
 with the following roles:

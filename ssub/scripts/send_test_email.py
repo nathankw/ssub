@@ -6,7 +6,7 @@ Send a test email using the mail configuration in the user-provided configuratio
 
 import argparse
 
-from sssub.subscriber import Poll
+from ssub.subscriber import Poll
 
 
 def get_parser():
@@ -29,7 +29,7 @@ def main():
     if not m.get_mail_params():
         # mail isn't configured in the conf file that the user provided
         raise Exception("You must provided mail configuration in your conf file.")
-    m.send_mail(subject="sssub test email", body="test")
+    m.send_mail(subject="ssub test email", body="test")
 
 if __name__ == "__main__":
     main()

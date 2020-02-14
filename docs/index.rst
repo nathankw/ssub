@@ -8,7 +8,7 @@ SampleSheet Subscriber package
 
 See the PyPI_ project's page for an overview and details on installation and configuration.
 
-.. _pypi: https://pypi.org/project/sssub/
+.. _pypi: https://pypi.org/project/ssub/
 
 
 Examples
@@ -24,8 +24,8 @@ Client API Modules
 .. toctree::
    :maxdepth: 3
 
-   sssub
-   sssub.subscriber <subscriber>
+   ssub
+   ssub.subscriber <subscriber>
 
 Scripts                                                                                                
 -------                                                                                                
@@ -33,7 +33,7 @@ Scripts
 .. toctree::                                                                                           
     :maxdepth: 1                                                                                       
                                                                                                        
-    scripts/launch_sssub.rst                                                                   
+    scripts/launch_ssub.rst                                                                   
     scripts/send_test_email.rst
 
 
