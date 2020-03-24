@@ -375,6 +375,10 @@ class Workflow:
           #. Running bcl2fastq and outputting a folder called demux in the local run directoy.
           #. Uploading the demux folder to the same bucket in the same folder in which the raw 
              sequencing run is stored.
+
+        Returns:
+            `str`. The bucket name and object path to the demux folder in Google Storage.
+                For example, "cgs-dev-sequencer-dropin/190625_A00731_0011_AHHTFVDMXX/{ssub.DEMUX_FOLDER_NAME}".
         """
         self.download_samplesheet()
         raw_rundir_path = self.download_rawrun()
@@ -382,7 +386,7 @@ class Workflow:
         self.extract_run(raw_rundir_path)
         # Launch bcl2fastq
         demux_dir = self.run_bcl2fastq()
-        self.upload_demux(path=demux_dir)
+        return self.upload_demux(path=demux_dir)
 
     def _get_download_dir(self):
         """
