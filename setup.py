@@ -55,5 +55,5 @@ setup(
   },
   scripts = scripts,
   url = "https://pypi.org/project/ssub/",
-  version = "0.1.3"
+  version = "0.2.0"
 )

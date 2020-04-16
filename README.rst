@@ -106,6 +106,10 @@ Setup
    
      gsutil notification create -e OBJECT_FINALIZE -f json -t samplesheets gs://samplesheets
 
+   If you get an access denied error while doing this, give the included script named 
+   **create_notification_configuration.py** a try. It uses the GCP Python API and is much easier to
+   work with in regards to how permissions are configured. 
+
 #. Create a Pub/Sub subscription. For example::
 
      gcloud beta pubsub subscriptions create --topic samplesheets ssub
