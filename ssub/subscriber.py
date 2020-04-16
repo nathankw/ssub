@@ -224,7 +224,12 @@ class Poll:
         except google.api_core.exceptions.DeadlineExceeded:
             self.logger.info("Nothing for now!")
             return []
-        return response.received_messages[0]
+        try:
+            return response.received_messages[0]
+        except IndexError:
+            # Since google-api-core 1.17.0, we'll possibly get an index error. It used to be the above return statement
+            # would never run unless there was a message received. 
+            return []
 
     def process_message(self, received_message):
         """
