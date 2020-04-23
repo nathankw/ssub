@@ -13,6 +13,7 @@ from ssub.subscriber import Poll
 
 def get_parser():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("-a", "--analysis-base-dir", help="Directy path in which all analysis will take place. If not specified, it will default to a subdirectory within the calling directory whose name is equal to `Poll.DEFAULT_ANALYSIS_DIR`. Will be created if it does not exist.")
     parser.add_argument("-c", "--conf-file", required=True, help="""
         Path to JSON configuration file.
     """)
@@ -27,11 +28,12 @@ def get_parser():
 def main():
     parser = get_parser()
     args = parser.parse_args()
+    analysis_base_dir = args.analysis_base_dir
     demuxtest = args.demuxtest
     project_id = args.project_id
     subscription_name = args.subscription_name
     conf_file = args.conf_file
-    poll = Poll(subscription_name=subscription_name, conf_file=conf_file, gcp_project_id=project_id, demuxtest=demuxtest)
+    poll = Poll(analysis_base_dir=analysis_base_dir, subscription_name=subscription_name, conf_file=conf_file, gcp_project_id=project_id, demuxtest=demuxtest)
     poll.start()
 
 

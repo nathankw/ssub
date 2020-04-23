@@ -40,6 +40,37 @@ class FirestoreMissingPubSubMessage(Exception):
     """
 
 
+def get_conf(conf_file):
+    conf = srm_utils.validate_conf(conf_file, schema_file=ssub.CONF_SCHEMA)
+    return conf
+
+def send_mail(subject, conf, body):
+    """
+    Sends an email if the mail parameters are provided in the configuration.
+    Prior to sending an email, the subject and body of the email will be logged.
+
+    Args:
+        subject: `str`. The email's subject. Note that the subject will be mangled a bit -
+            it will be prefixed with `self.monitor_Name` plus a colon and a space.
+        conf: `dict` as returned by `get_conf`. 
+        body: `str`. The email body w/o any markup.
+
+    Returns: `None`.
+    """
+    subject = conf[srm.C_MONITOR_NAME] + ": " + subject
+    mail_params = conf.get(srm.C_MAIL)
+    if not mail_params:
+        return
+    from_addr = mail_params["from"]
+    host = mail_params["host"]
+    tos = mail_params["tos"]
+    self.logger.info("""
+        Sending mail
+        Subject: {}
+        Body: {}
+        """.format(subject, body))
+    srm_utils.send_mail(from_addr=from_addr, to_addrs=tos, subject=subject, body=body, host=host)
+
 class Poll:
     """
     Contains the logic for pulling down a message from the subscribed Pub/Sub topic, analayzing the message,
@@ -76,11 +107,7 @@ class Poll:
         self.analysis_base_dir = self._get_analysis_basedir(analysis_base_dir)
         self.demuxtest = demuxtest
         self.subscription_name = subscription_name
-        self.conf_file = conf_file
-        self.conf = srm_utils.validate_conf(conf_file, schema_file=ssub.CONF_SCHEMA)
-        #: The name of the subscriber client. The name will appear in the subject line if email notification
-        #: is configured, as well as in other places, i.e. log messages.
-        self.client_name = self.conf[srm.C_MONITOR_NAME]
+        self.conf = get_conf(conf_file)
         self.gcp_project_id = gcp_project_id
         if not self.gcp_project_id:
             try:
@@ -134,38 +161,6 @@ class Poll:
         # Add error file handler to the logger:
         logging_utils.add_file_handler(logger=logger, log_dir=ssub.LOG_DIR, level=logging.ERROR, tag="error")
         return logger
-
-    def get_mail_params(self):
-        """
-        Parses the mail configuration out of the provided configuration file.
-        """
-        return self.conf.get(srm.C_MAIL)
-
-    def send_mail(self, subject, body):
-        """
-        Sends an email if the mail parameters are provided in the configuration.
-        Prior to sending an email, the subject and body of the email will be logged.
-
-        Args:
-            subject: `str`. The email's subject. Note that the subject will be mangled a bit -
-                it will be prefixed with `self.monitor_Name` plus a colon and a space.
-            body: `str`. The email body w/o any markup.
-
-        Returns: `None`.
-        """
-        subject = self.client_name + ": " + subject
-        mail_params = self.get_mail_params()
-        if not mail_params:
-            return
-        from_addr = mail_params["from"]
-        host = mail_params["host"]
-        tos = mail_params["tos"]
-        self.logger.info("""
-            Sending mail
-            Subject: {}
-            Body: {}
-            """.format(subject, body))
-        srm_utils.send_mail(from_addr=from_addr, to_addrs=tos, subject=subject, body=body, host=host)
 
     def get_msg_data(self, rcv_msg):
         """
@@ -280,18 +275,13 @@ class Poll:
         self.subscriber.acknowledge(self.subscription_path, ack_ids=[received_message.ack_id])
         msg = f"Processing SampleSheet for run name {run_name}"
         self.logger.info(msg)
-        self.send_mail(subject=f"{run_name}", body=msg)
+        send_mail(subject=f"{run_name}", conf=self.conf, body=msg)
         # Run demux workflow
         self.run_demux_workflow(run_name)
 
-    def run_demux_workflow(self, run_name):
-        wf = Workflow(conf_file=self.conf_file, run_name=run_name, analysis_base_dir=self.analysis_base_dir, demuxtest=self.demuxtest)
-        gs_demux_path = wf.run()
-        subject = f"Demux complete for {run_name}"
-        body = f"Results in Google Storage at object path {gs_demux_path}."
-        body += f"Consult the Firestore document {run_name} in collection {self.firestore_collection_name} for more details."
-        self.logger.info(body)
-        self.send_mail(subject=subject, body=body)
+    def run_demux_workflow(self, run_name, restart_from=""):
+        wf = Workflow(conf_file=self.conf_file, run_name=run_name, analysis_base_dir=self.analysis_base_dir, demuxtest=self.demuxtest, restart_from=restart_from)
+        wf.run()
 
     def start(self):
         interval = self.conf.get(srm.C_CYCLE_PAUSE_SEC, 60)
@@ -310,7 +300,7 @@ class Poll:
             tb_msg = pformat(traceback.extract_tb(tb).format())                                 
             msg = "Main process Exception: {} {}".format(e, tb_msg)
             self.logger.error(msg)
-            self.send_mail(subject="Error", body=msg)
+            send_mail(subject="Error", conf=self.conf, body=msg)
             raise
 
 
@@ -318,14 +308,23 @@ class Workflow:
     """
     Runs the demultiplexing workflow. 
     """
+    RESTART_FROM_BCL2FASTQ = "bcl2fastq"
+    RESTART_FROM_UPLOAD = "upload"
+    RESTART_FROM_CHOICES = [
+        RESTART_FROM_BCL2FASTQ,
+        RESTART_FROM_UPLOAD
+    ]
+    
 
-    def __init__(self, conf_file, run_name, analysis_base_dir,  demuxtest=False):
+    def __init__(self, conf_file, run_name, analysis_base_dir,  demuxtest=False, restart_from=""):
         """
         Args:
             conf_file: `str`. Path to the JSON configurationn file. 
             run_name: `str`. The name of the sequencing run to process. 
             demuxtest: `bool`. True means to demultiplex only a single tile (s_1_1101) - handy when developing/testing.
+            restart_from: `str`. Should be a constant from `Workflow.RESTART_FROM_CHOICES`.
         """
+        self.restart_from = restart_from
         self.conf_file = conf_file
         self.conf = srm_utils.validate_conf(conf_file, schema_file=ssub.CONF_SCHEMA)
         self.run_name = run_name
@@ -377,7 +376,7 @@ class Workflow:
           #. Downloading the SampleSheet to `self.download_dir`. 
           #. Downloading the run directory (tarball) to `self.download_dir`. 
           #. Extracting the raw run in `self.download_dir`. 
-          #. Running bcl2fastq and outputting a folder called demux in the local run directoy.
+          #. Running bcl2fastq and outputting a folder called demux in the local run directory.
           #. Uploading the demux folder to the same bucket in the same folder in which the raw 
              sequencing run is stored.
 
@@ -385,13 +384,27 @@ class Workflow:
             `str`. The bucket name and object path to the demux folder in Google Storage.
                 For example, "cgs-dev-sequencer-dropin/190625_A00731_0011_AHHTFVDMXX/{ssub.DEMUX_FOLDER_NAME}".
         """
-        self.download_samplesheet()
-        raw_rundir_path = self.download_rawrun()
-        # Extract tarball in same directory in which raw_rundir_path resides
-        self.extract_run(raw_rundir_path)
-        # Launch bcl2fastq
-        demux_dir = self.run_bcl2fastq()
-        return self.upload_demux(path=demux_dir)
+        def run_bcl_and_downstream():
+            # Launch bcl2fastq
+            demux_dir = self.run_bcl2fastq()
+            return self.upload_demux(path=demux_dir)
+
+        if self.restart_from == Workflow.RESTART_FROM_BCL2FASTQ:
+            gs_demux_path = run_bcl_and_downstream()
+        elif self.restart_from == Workflow.RESTART_FROM_UPLOAD:
+            gs_demux_path = self.upload_demux(path=demux_dir)
+        else:
+            self.download_samplesheet()
+            raw_rundir_path = self.download_rawrun()
+            # Extract tarball in same directory in which raw_rundir_path resides
+            self.extract_run(raw_rundir_path)
+            gs_demux_path = run_bcl_and_downstream()
+        subject = f"Demux complete for {self.run_name}"
+        body = f"Results in Google Storage at object path {gs_demux_path}."
+        body += f"Consult the Firestore document {self.run_name} in collection {self.firestore_collection_name} for more details."
+        self.logger.info(body)
+        send_mail(subject=subject, conf=self.conf, body=body)
+        return gs_demux_path
 
     def _get_download_dir(self):
         """
