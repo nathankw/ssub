@@ -64,7 +64,7 @@ def send_mail(subject, conf, body):
     from_addr = mail_params["from"]
     host = mail_params["host"]
     tos = mail_params["tos"]
-    self.logger.info("""
+    logger.info("""
         Sending mail
         Subject: {}
         Body: {}
@@ -101,7 +101,7 @@ class Poll:
                 the standard environment variable GCP_PROJECT.
             demuxtest: `bool`. True means to demultiplex only a single tile (s_1_1101) - handy when developing/testing. 
         """
-        self.logger = self._set_logger()
+        self._set_logger()
         #: Path to the base directory in which all further actions take place, i.e. downloads, 
         #: and running bcl2fastq. Will be created if the path does not yet exist.
         self.analysis_base_dir = self._get_analysis_basedir(analysis_base_dir)
@@ -114,7 +114,7 @@ class Poll:
                 self.gcp_project_id = os.environ["GCP_PROJECT"]
             except KeyError:
                 msg = "You must set the GCP_PROJECT environment variable when the 'gcp_project_id' argument is not set."
-                self.logger.critical(msg)
+                logger.critical(msg)
                 sys.exit(-1)
         #: When an analysis directory in the directory specified by `self.analysis_base_dir` is older than
         #: this many seconds, remove it.
@@ -122,7 +122,7 @@ class Poll:
         self.sweep_age_sec = self.conf.get(srm.C_SWEEP_AGE_SEC, 604800)
         self.subscriber = pubsub_v1.SubscriberClient()
         self.subscription_path = self.subscriber.subscription_path(self.gcp_project_id, self.subscription_name)
-        self.logger.info(f"Subscription path: {self.subscription_path}")
+        logger.info(f"Subscription path: {self.subscription_path}")
         self.firestore_collection_name = self.conf[srm.C_FIRESTORE_COLLECTION]
         self.firestore_coll = FirestoreCollection(self.firestore_collection_name)
 
@@ -217,7 +217,7 @@ class Poll:
             #: https://googleapis.dev/python/pubsub/latest/types.html#google.cloud.pubsub_v1.types.PullResponse
             response = self.subscriber.pull(self.subscription_path, max_messages=1)
         except google.api_core.exceptions.DeadlineExceeded:
-            self.logger.info("Nothing for now!")
+            logger.info("Nothing for now!")
             return []
         try:
             return response.received_messages[0]
@@ -239,7 +239,7 @@ class Poll:
         """
         # Get JSON form of data
         jdata = self.get_msg_data(received_message)
-        self.logger.info(f"Processing message for {jdata['selfLink']}")
+        logger.info(f"Processing message for {jdata['selfLink']}")
         run_name = jdata[srm.FIRESTORE_ATTR_RUN_NAME].split(".")[0]
         # Query Firestore for the run metadata to grab the location in Google Storage of the raw run.
         # The below line raises a sruns_monitor.exceptions.FirestoreDocumentMissing` Exception if 
@@ -264,7 +264,7 @@ class Poll:
             current_gen = jdata["generation"]
             print(f"Current generation number: {current_gen}")
             if prev_gen == current_gen:
-                self.logger.info(f"Duplicate message with generation {current_gen}; skipping.")
+                logger.info(f"Duplicate message with generation {current_gen}; skipping.")
                 # duplicate message sent. Rare, but possible occurrence.
                 self.subscriber.acknowledge(self.subscription_path, ack_ids=[received_message.ack_id])
                 return
@@ -274,7 +274,7 @@ class Poll:
         # Acknowledge the received message so it won't be sent again.
         self.subscriber.acknowledge(self.subscription_path, ack_ids=[received_message.ack_id])
         msg = f"Processing SampleSheet for run name {run_name}"
-        self.logger.info(msg)
+        logger.info(msg)
         send_mail(subject=f"{run_name}", conf=self.conf, body=msg)
         # Run demux workflow
         self.run_demux_workflow(run_name)
@@ -293,13 +293,13 @@ class Poll:
                 deleted_dirs = srm_utils.clean_completed_runs(basedir=self.analysis_base_dir, limit=self.sweep_age_sec)
                 if deleted_dirs:
                     for d_path in deleted_dirs:
-                        self.logger.info("Deleted directory {}".format(d_path))
+                        logger.info("Deleted directory {}".format(d_path))
                 time.sleep(interval)
         except Exception as e:
             tb = e.__traceback__
             tb_msg = pformat(traceback.extract_tb(tb).format())                                 
             msg = "Main process Exception: {} {}".format(e, tb_msg)
-            self.logger.error(msg)
+            logger.error(msg)
             send_mail(subject="Error", conf=self.conf, body=msg)
             raise
 
@@ -402,7 +402,7 @@ class Workflow:
         subject = f"Demux complete for {self.run_name}"
         body = f"Results in Google Storage at object path {gs_demux_path}."
         body += f"Consult the Firestore document {self.run_name} in collection {self.firestore_collection_name} for more details."
-        self.logger.info(body)
+        logger.info(body)
         send_mail(subject=subject, conf=self.conf, body=body)
         return gs_demux_path
 
