@@ -107,6 +107,7 @@ class Poll:
         self.analysis_base_dir = self._get_analysis_basedir(analysis_base_dir)
         self.demuxtest = demuxtest
         self.subscription_name = subscription_name
+        self.conf_file = conf_file
         self.conf = get_conf(conf_file)
         self.gcp_project_id = gcp_project_id
         if not self.gcp_project_id:
@@ -327,7 +328,7 @@ class Workflow:
         """
         self.restart_from = restart_from
         self.conf_file = conf_file
-        self.conf = srm_utils.validate_conf(conf_file, schema_file=ssub.CONF_SCHEMA)
+        self.conf = get_conf(self.conf_file)
         self.run_name = run_name
         self.demuxtest = demuxtest
         #: Path to the base directory in which all further actions take place, i.e. downloads, 
