@@ -251,7 +251,8 @@ class Poll:
             msg += f"You'll need to address the reason why, and then re-upload the SampleSheet if processing is still necessary."
             logger.critical(msg)
             self.subscriber.acknowledge(self.subscription_path, ack_ids=[received_message.ack_id])
-            raise srm_exceptions.FirestoreDocumentMissing(msg)
+            send_mail(subject="Error", conf=self.conf, body=msg)
+            return
         # Check if we have a previous sample sheet message that we stored in the Firestore
         # document.
         samplesheet_pubsub_data = doc.get(srm.FIRESTORE_ATTR_SS_PUBSUB_DATA)
